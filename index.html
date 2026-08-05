@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#07120d" />
+  <title>PintDrop Interactive Demo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="splashScreen" class="splash-screen" aria-hidden="false">
+    <div class="splash-content">
+      <img class="splash-logo" src="images/pintdrop-logo.png" alt="PintDrop" />
+      <h1 class="splash-heading">Buy someone a pint.<br />From anywhere.</h1>
+      <p class="splash-description">Send a pint to friends and family in their favourite Irish pub in seconds.</p>
+      <button type="button" id="splashDismiss" class="primary get-started-btn">Get Started</button>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="pintdrop-logo">
+        <img class="pintdrop-mark pintdrop-mark--sm" src="images/pintdrop-mark.png" alt="" />
+        <div class="pintdrop-logo-text">
+          <strong>Pint<span>Drop</span></strong>
+          <small>Buy the next round, even when you cannot be there.</small>
+        </div>
+      </div>
+    </div>
+
+    <nav aria-label="Demo sections">
+      <button class="tab active" data-view="customer">Send a PintDrop</button>
+      <button class="tab" data-view="partner">Pub Partner</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="customer" class="view active">
+      <div class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Interactive demo</p>
+          <h1>Brighten someone's day with a pint waiting at their local.</h1>
+          <p>Send a drink in seconds. They'll receive a text and redeem it whenever they're ready.</p>
+        </div>
+        <div class="hero-note">
+          <span>Complete journey</span>
+          <strong>Customer → Payment → Voucher → Pub redemption</strong>
+        </div>
+      </div>
+
+      <div class="journey-progress" aria-label="Purchase progress">
+        <div class="journey-step active" data-journey-step="1" data-step-indicator="details"><span>1</span><strong>Choose Pub</strong></div>
+        <div class="journey-line" data-journey-line="1"></div>
+        <div class="journey-step" data-journey-step="2"><span>2</span><strong>Gift</strong></div>
+        <div class="journey-line" data-journey-line="2"></div>
+        <div class="journey-step" data-journey-step="3" data-step-indicator="review"><span>3</span><strong>Recipient</strong></div>
+        <div class="journey-line" data-journey-line="3"></div>
+        <div class="journey-step" data-journey-step="4" data-step-indicator="payment"><span>4</span><strong>Payment</strong></div>
+      </div>
+
+      <section id="detailsStep" class="purchase-step active">
+        <section class="card venue-browser">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Step 1</p>
+              <h2>Choose a pub</h2>
+              <p class="section-lead">Pick the local where they'll redeem their drink.</p>
+            </div>
+          </div>
+          <div class="venue-search-wrap">
+            <span class="venue-search-icon" aria-hidden="true">⌕</span>
+            <input type="search" id="pubSearch" class="venue-search" placeholder="Search pubs in Buncrana…" aria-label="Search pubs" />
+          </div>
+          <div id="pubList" class="venue-grid"></div>
+        </section>
+
+        <section class="card gift-browser">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Step 2</p>
+              <h2>Pick a gift</h2>
+              <p class="section-lead">Send something they'll actually want at the bar.</p>
+            </div>
+          </div>
+          <div id="giftList" class="gift-grid"></div>
+        </section>
+
+        <section class="card recipient-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Step 3</p>
+              <h2>Add recipient details</h2>
+              <p class="section-lead">We'll text them a voucher they can redeem instantly.</p>
+            </div>
+          </div>
+          <form id="orderForm" class="recipient-form">
+            <div class="field-grid">
+              <label class="float-field">
+                <input id="recipientName" required placeholder=" " autocomplete="name" value="Dad" />
+                <span>Recipient name</span>
+              </label>
+
+              <label class="float-field">
+                <input id="recipientPhone" required placeholder=" " inputmode="tel" autocomplete="tel" value="+353 87 123 4567" />
+                <span>Mobile number</span>
+              </label>
+
+              <label class="float-field full">
+                <textarea id="message" rows="3" placeholder=" ">Happy birthday Dad — have one on me 🍻</textarea>
+                <span>Personal message</span>
+              </label>
+
+              <label class="float-field">
+                <input id="senderName" required placeholder=" " autocomplete="name" value="Ryan" />
+                <span>Sender name</span>
+              </label>
+
+              <label class="float-field">
+                <input id="deliveryDate" type="date" placeholder=" " />
+                <span>Delivery date</span>
+              </label>
+            </div>
+
+            <div class="order-summary-strip full">
+              <div class="summary-item">
+                <span>Pub</span>
+                <strong id="summaryPub">Not selected</strong>
+              </div>
+              <div class="summary-item">
+                <span>Gift</span>
+                <strong id="summaryGift">Not selected</strong>
+              </div>
+              <div class="summary-item summary-total">
+                <span>Total</span>
+                <strong id="summaryPrice">€0.00</strong>
+              </div>
+            </div>
+
+            <button type="submit" class="primary full checkout-cta">Review PintDrop</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="reviewStep" class="purchase-step">
+        <section class="card flow-card checkout-card">
+          <div class="flow-heading">
+            <div>
+              <p class="eyebrow">Review order</p>
+              <h2>One last look before you send it.</h2>
+              <p class="section-lead">Everything below goes straight to your recipient.</p>
+            </div>
+            <button type="button" class="secondary ghost-btn" data-back-to="details">Edit details</button>
+          </div>
+
+          <div id="reviewDetails" class="review-list checkout-review"></div>
+
+          <div class="price-box checkout-totals">
+            <div class="price-row"><span>Gift</span><strong id="reviewGiftPrice">€0.00</strong></div>
+            <div class="price-row"><span>Service fee</span><strong id="reviewFee">€0.50</strong></div>
+            <div class="price-row total"><span>Total due</span><strong id="reviewTotal">€0.00</strong></div>
+          </div>
+
+          <button id="goToPayment" type="button" class="primary wide checkout-cta">Proceed to secure payment</button>
+          <p class="secure-note"><span class="secure-badge">🔒</span> Demo checkout — no real payment is taken.</p>
+        </section>
+      </section>
+
+      <section id="paymentStep" class="purchase-step">
+        <section class="card flow-card checkout-card payment-card">
+          <div class="flow-heading">
+            <div>
+              <p class="eyebrow">Secure payment</p>
+              <h2>Pay for your PintDrop</h2>
+              <p class="section-lead">Complete your order in seconds.</p>
+            </div>
+            <button type="button" class="secondary ghost-btn" data-back-to="review">Back</button>
+          </div>
+
+          <div class="payment-summary checkout-order-banner">
+            <span id="paymentGiftIcon" class="payment-icon">🍺</span>
+            <div class="payment-copy">
+              <strong id="paymentGiftName">Pint</strong>
+              <small id="paymentPubName">O'Flaherty's Bar</small>
+            </div>
+            <strong id="paymentTotal" class="payment-amount">€7.00</strong>
+          </div>
+
+          <form id="paymentForm" class="payment-form">
+            <div class="payment-fields">
+              <label class="float-field full">
+                <input id="cardName" required placeholder=" " autocomplete="cc-name" />
+                <span>Cardholder name</span>
+              </label>
+              <label class="float-field full">
+                <input id="cardNumber" required value="4242 4242 4242 4242" placeholder=" " inputmode="numeric" autocomplete="cc-number" />
+                <span>Card number</span>
+              </label>
+              <div class="payment-row">
+                <label class="float-field">
+                  <input id="cardExpiry" required value="12/29" placeholder=" " inputmode="numeric" autocomplete="cc-exp" />
+                  <span>Expiry</span>
+                </label>
+                <label class="float-field">
+                  <input id="cardCvc" required value="123" placeholder=" " inputmode="numeric" autocomplete="cc-csc" />
+                  <span>CVC</span>
+                </label>
+              </div>
+            </div>
+            <button id="payButton" type="submit" class="primary full checkout-cta">Pay securely</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="successStep" class="purchase-step">
+        <section class="card success-card checkout-success">
+          <img class="pintdrop-logo-img pintdrop-logo-img--success" src="images/pintdrop-logo.png" alt="PintDrop" />
+          <div class="success-tick success-tick-animate">✓</div>
+          <p class="eyebrow">Payment successful</p>
+          <h2>Your PintDrop has been sent!</h2>
+          <p id="successMessage">The recipient has received a message with their voucher.</p>
+          <div class="success-checks">
+            <span>✓ Payment confirmed</span>
+            <span>✓ SMS delivered</span>
+            <span>✓ Voucher ready to redeem</span>
+          </div>
+          <div class="success-reference"><span>Reference</span><strong id="successCode">PD-XXXXXX</strong><small>Keep this for support</small></div>
+          <div class="success-actions">
+            <button id="viewVoucher" type="button" class="primary">View voucher</button>
+            <button id="sendAnother" type="button" class="secondary">Send another</button>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <section id="sms" class="view">
+      <div class="recipient-layout">
+        <section class="card sms-copy-card">
+          <p class="eyebrow">Recipient experience</p>
+          <h1>The message that makes their day.</h1>
+          <p>This is the text your recipient receives after payment. The link opens their live PintDrop voucher.</p>
+          <div class="delivery-status">
+            <span class="delivery-dot"></span> Delivered by SMS
+          </div>
+        </section>
+
+        <div class="phone-stage" id="phoneStage">
+          <section class="phone-shell" id="phoneShell" aria-label="Recipient SMS preview">
+            <div class="phone-notch"></div>
+            <div class="phone-top"><span>09:41</span><span>● ● ●</span></div>
+            <div class="messages-title"><button id="backFromSms" class="ios-back" type="button">‹ Messages</button><div class="pintdrop-logo pintdrop-logo-center pintdrop-logo-compact"><img class="pintdrop-mark pintdrop-mark--avatar" src="images/pintdrop-mark.png" alt="" /><strong>Pint<span>Drop</span></strong></div><small>Text Message</small></div>
+            <div id="smsEmpty" class="sms-empty">Create a PintDrop to preview the recipient message.</div>
+            <div id="smsThread" class="hidden">
+              <div class="sms-time">Today <span id="smsTime">11:56</span></div>
+              <div class="sms-message-row">
+              <img class="pintdrop-mark pintdrop-mark--avatar" src="images/pintdrop-mark.png" alt="" />
+              <div class="sms-bubble">
+                <strong id="smsHeadline">🍺 Ryan has bought you a pint!</strong>
+                <p id="smsPersonalMessage">“Happy birthday Dad — have one on me 🍻”</p>
+                <div class="sms-venue">
+                  <span id="smsGiftIcon">🍺</span>
+                  <div><strong id="smsGift">Pint</strong><small id="smsPub">O'Flaherty's Bar, Buncrana</small></div>
+                </div>
+                <button id="openSmsVoucher" type="button" class="sms-link">Open PintDrop voucher</button>
+              </div>
+              </div>
+              <p id="smsRedeemedNotice" class="redeemed-notice hidden">✅ Your PintDrop was redeemed successfully.</p>
+            </div>
+
+            <div id="smsWalletOverlay" class="sms-wallet-overlay hidden" aria-hidden="true">
+              <div class="sms-wallet-backdrop" id="smsWalletBackdrop"></div>
+              <button type="button" class="sms-wallet-done" id="closeSmsWallet">Done</button>
+              <article class="sms-wallet-pass" id="smsWalletPass" aria-label="PintDrop voucher">
+                <div class="sms-wallet-handle" aria-hidden="true"></div>
+
+                <div class="pass-header sms-wallet-header">
+                  <div class="pintdrop-logo pintdrop-logo-center"><img class="pintdrop-mark pintdrop-mark--wallet" src="images/pintdrop-mark.png" alt="PintDrop" /></div>
+                  <span id="smsWalletStatus" class="status waiting">VALID</span>
+                </div>
+
+                <div class="pass-gift sms-wallet-gift">
+                  <p>YOU'VE BEEN SENT</p>
+                  <h2><span id="smsWalletGiftIcon">🍺</span> <span id="smsWalletGift"></span></h2>
+                  <strong id="smsWalletPub"></strong>
+                </div>
+
+                <blockquote id="smsWalletMessage" class="sms-wallet-message"></blockquote>
+
+                <div class="pass-qr sms-wallet-qr" id="smsWalletQrArea">
+                  <div class="scan-line"></div>
+                  <div class="qr-wrap" aria-label="Demo QR code">
+                    <div class="fake-qr" id="smsWalletFakeQr"></div>
+                  </div>
+                  <small>Show this QR code to bar staff · Tap to enlarge</small>
+                </div>
+
+                <div class="pass-details sms-wallet-details">
+                  <div class="sms-wallet-detail"><small>Recipient</small><strong id="smsWalletRecipient"></strong></div>
+                  <div class="sms-wallet-detail"><small>From</small><strong id="smsWalletSender"></strong></div>
+                  <div class="sms-wallet-detail"><small>Voucher ID</small><strong id="smsWalletCode"></strong></div>
+                  <div class="sms-wallet-detail"><small>Expires</small><strong id="smsWalletExpiry"></strong></div>
+                </div>
+
+                <div id="smsWalletRedeemedStamp" class="redeemed-stamp sms-wallet-redeemed hidden">
+                  <strong>✓ REDEEMED</strong>
+                  <span id="smsWalletRedeemedWhen"></span>
+                </div>
+              </article>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section id="voucher" class="view">
+      <section class="wallet-pass">
+        <div id="voucherEmpty">
+          <p class="eyebrow">Recipient voucher</p>
+          <h2 id="voucherTitle">No voucher created yet</h2>
+          <p id="voucherSubtitle">Create one from the Customer tab.</p>
+        </div>
+
+        <div id="voucherBody" class="hidden">
+          <div class="pass-header">
+            <div class="pintdrop-logo pintdrop-logo-center"><img class="pintdrop-mark pintdrop-mark--wallet" src="images/pintdrop-mark.png" alt="PintDrop" /></div>
+            <span id="voucherStatus" class="status waiting">VALID</span>
+          </div>
+
+          <div class="pass-gift">
+            <p>YOU'VE BEEN SENT</p>
+            <h2><span id="voucherGiftIcon">🍺</span> <span id="voucherGift"></span></h2>
+            <strong id="voucherPub"></strong>
+          </div>
+
+          <blockquote id="voucherMessage"></blockquote>
+
+          <div class="pass-qr" id="voucherQrArea">
+            <div class="scan-line"></div>
+            <div class="qr-wrap" aria-label="Demo QR code">
+              <div class="fake-qr" id="fakeQr"></div>
+            </div>
+            <small>Show this QR code to bar staff · Tap to enlarge</small>
+          </div>
+
+          <div class="pass-details">
+            <div><small>Recipient</small><strong id="voucherRecipient"></strong></div>
+            <div><small>From</small><strong id="voucherSender"></strong></div>
+            <div><small>Voucher ID</small><strong id="voucherCode"></strong></div>
+            <div><small>Expires</small><strong id="voucherExpiry"></strong></div>
+          </div>
+
+          <div id="redeemedStamp" class="redeemed-stamp hidden">
+            <strong>✓ REDEEMED</strong>
+            <span id="redeemedWhen"></span>
+          </div>
+
+          <div class="pass-actions">
+            <button type="button" class="wallet-button"> Add to Apple Wallet</button>
+            <button id="shareVoucher" type="button" class="secondary">Share voucher</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section id="partner" class="view">
+      <div class="partner-heading">
+        <div class="partner-heading-copy">
+          <img class="pintdrop-logo-img pintdrop-logo-img--partner" src="images/pintdrop-logo.png" alt="PintDrop" />
+          <div class="partner-heading-text">
+            <h1>Pub Partner Dashboard</h1>
+            <p class="partner-pub-name">O'Flaherty's Bar, Buncrana</p>
+          </div>
+        </div>
+        <button id="resetDemo" class="secondary reset-demo-btn" type="button">↺ Reset demo</button>
+      </div>
+
+      <div class="stats partner-stats">
+        <div class="stat partner-stat partner-stat-card">
+          <span class="partner-stat-icon" aria-hidden="true">⏳</span>
+          <span class="partner-stat-label">Waiting vouchers</span>
+          <strong id="statWaiting">0</strong>
+        </div>
+        <div class="stat partner-stat partner-stat-card">
+          <span class="partner-stat-icon" aria-hidden="true">✓</span>
+          <span class="partner-stat-label">Redeemed today</span>
+          <strong id="statRedeemedToday">0</strong>
+        </div>
+        <div class="stat partner-stat partner-stat-card partner-stat-highlight">
+          <span class="partner-stat-icon" aria-hidden="true">€</span>
+          <span class="partner-stat-label">Value redeemed today</span>
+          <strong id="statValueToday">€0.00</strong>
+        </div>
+      </div>
+
+      <section class="card partner-scan-card">
+        <h2>Redeem a voucher</h2>
+        <p class="partner-scan-lead">Scan or search a customer voucher to redeem it at the bar.</p>
+        <button id="scanLatestVoucher" type="button" class="scan-button scan-button-primary partner-scan-btn">▣ Scan latest voucher</button>
+        <div id="scannerDemo" class="scanner-demo hidden">
+          <p id="scannerStatus" class="scanner-status">Scanning voucher…</p>
+          <div class="scanner-frame">
+            <div class="scanner-viewfinder"></div>
+            <i class="scanner-line"></i>
+            <span>Align QR code inside the frame</span>
+          </div>
+        </div>
+        <form id="redeemForm" class="partner-search-form">
+          <label>
+            Enter customer code
+            <input id="redeemCode" placeholder="PD-XXXXXX" />
+          </label>
+          <button type="submit" class="secondary redeem-submit-btn">Find voucher</button>
+        </form>
+        <div id="redeemResult"></div>
+      </section>
+
+      <section class="card partner-activity-card">
+        <h2>Recent activity</h2>
+        <div id="activityList" class="activity-list"></div>
+      </section>
+
+      <div class="grid two partner-grid">
+        <section class="card partner-waiting-card">
+          <h2>Waiting vouchers</h2>
+          <div id="waitingList" class="voucher-list partner-voucher-list"></div>
+        </section>
+
+        <section class="card partner-redeemed-card">
+          <h2>Redeemed vouchers</h2>
+          <div id="redeemedList" class="voucher-list partner-voucher-list"></div>
+        </section>
+      </div>
+    </section>
+    <div id="senderNotification" class="sender-notification hidden">
+      <img class="pintdrop-mark pintdrop-mark--sm sender-notification-icon" src="images/pintdrop-mark.png" alt="" />
+      <div class="sender-notification-copy">
+        <div class="pintdrop-logo pintdrop-logo-inline"><strong>Pint<span>Drop</span></strong></div>
+        <p class="sender-notification-headline">🍻 Cheers!</p>
+        <p id="senderNotificationText">Your gift was redeemed.</p>
+      </div>
+    </div>
+    <div id="processingOverlay" class="processing-overlay hidden" role="status" aria-live="polite">
+      <div class="processing-box">
+        <img class="pintdrop-mark pintdrop-mark--md" src="images/pintdrop-mark.png" alt="" />
+        <div class="spinner"></div>
+        <h2 id="processingTitle">Processing payment…</h2>
+        <ul class="processing-steps">
+          <li id="procStep1"><span class="step-mark">○</span> Authorising payment…</li>
+          <li id="procStep2"><span class="step-mark">○</span> Creating voucher…</li>
+          <li id="procStep3"><span class="step-mark">○</span> Sending SMS…</li>
+          <li id="procStep4"><span class="step-mark">○</span> PintDrop sent</li>
+        </ul>
+      </div>
+    </div>
+</main>
+
+  <footer>PintDrop interactive demo • Data is stored only in this browser</footer>
+  <script src="app.js"></script>
+</body>
+</html>
