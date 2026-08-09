@@ -2,3 +2,7 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# Optional local Supabase overrides (copy from supabase-config.js; never commit service_role keys)
+supabase-config.local.js
+.env*

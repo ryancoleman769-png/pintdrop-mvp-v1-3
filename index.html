@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
-  <title>PintDrop Interactive Demo</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>PintDrop — Send a pint to their local</title>
+  <link rel="stylesheet" href="styles.css?v=20260809-recipient-email1" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -28,7 +28,7 @@
       </div>
     </div>
 
-    <nav aria-label="Demo sections">
+    <nav aria-label="Main navigation">
       <button class="tab active" data-view="customer">Send a PintDrop</button>
       <button class="tab" data-view="partner">Pub Partner</button>
     </nav>
@@ -38,28 +38,25 @@
     <section id="customer" class="view active">
       <div class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Interactive demo</p>
-          <h1>Brighten someone's day with a pint waiting at their local.</h1>
-          <p>Send a drink in seconds. They'll receive a text and redeem it whenever they're ready.</p>
-        </div>
-        <div class="hero-note">
-          <span>Complete journey</span>
-          <strong>Customer → Payment → Voucher → Pub redemption</strong>
+          <h1>Send someone a pint at their local.</h1>
+          <p>Choose their pub, pick their drink and we'll send them a PintDrop to redeem at the bar.</p>
         </div>
       </div>
 
       <div class="journey-progress" aria-label="Purchase progress">
-        <div class="journey-step active" data-journey-step="1" data-step-indicator="details"><span>1</span><strong>Choose Pub</strong></div>
+        <div class="journey-step active" data-journey-step="1"><span>1</span><strong>Pub</strong></div>
         <div class="journey-line" data-journey-line="1"></div>
-        <div class="journey-step" data-journey-step="2"><span>2</span><strong>Gift</strong></div>
+        <div class="journey-step" data-journey-step="2"><span>2</span><strong>Drink</strong></div>
         <div class="journey-line" data-journey-line="2"></div>
-        <div class="journey-step" data-journey-step="3" data-step-indicator="review"><span>3</span><strong>Recipient</strong></div>
+        <div class="journey-step" data-journey-step="3"><span>3</span><strong>Recipient</strong></div>
         <div class="journey-line" data-journey-line="3"></div>
-        <div class="journey-step" data-journey-step="4" data-step-indicator="payment"><span>4</span><strong>Payment</strong></div>
+        <div class="journey-step" data-journey-step="4"><span>4</span><strong>Review</strong></div>
+        <div class="journey-line" data-journey-line="4"></div>
+        <div class="journey-step" data-journey-step="5"><span>5</span><strong>Checkout</strong></div>
       </div>
 
       <section id="detailsStep" class="purchase-step active">
-        <section class="card venue-browser">
+        <section class="card venue-browser customer-substep active" data-customer-substep="pub">
           <div class="section-head">
             <div>
               <p class="eyebrow">Step 1</p>
@@ -72,9 +69,11 @@
             <input type="search" id="pubSearch" class="venue-search" placeholder="Search pubs in Buncrana…" aria-label="Search pubs" />
           </div>
           <div id="pubList" class="venue-grid"></div>
+          <p id="pubStepError" class="step-error hidden" role="alert">Please choose a participating pub to continue.</p>
+          <button type="button" class="primary full mobile-continue" data-next-substep="drink">Continue to drinks</button>
         </section>
 
-        <section class="card gift-browser">
+        <section class="card gift-browser customer-substep" data-customer-substep="drink">
           <div class="section-head">
             <div>
               <p class="eyebrow">Step 2</p>
@@ -83,9 +82,14 @@
             </div>
           </div>
           <div id="giftList" class="gift-grid"></div>
+          <p id="giftStepError" class="step-error hidden" role="alert">Please choose a drink to continue.</p>
+          <div class="mobile-substep-nav">
+            <button type="button" class="secondary ghost-btn mobile-substep-back" data-prev-substep="pub">Back</button>
+            <button type="button" class="primary full mobile-continue" data-next-substep="recipient">Continue to recipient</button>
+          </div>
         </section>
 
-        <section class="card recipient-card">
+        <section class="card recipient-card customer-substep" data-customer-substep="recipient">
           <div class="section-head">
             <div>
               <p class="eyebrow">Step 3</p>
@@ -100,10 +104,22 @@
                 <span>Recipient name</span>
               </label>
 
-              <label class="float-field">
-                <input id="recipientPhone" required placeholder=" " inputmode="tel" autocomplete="tel" value="+353 87 123 4567" />
+              <label class="float-field phone-field full">
+                <div class="phone-input-row">
+                  <select id="recipientPhoneCountry" class="phone-country-select" aria-label="Country code">
+                    <option value="IE" selected>🇮🇪 +353</option>
+                    <option value="GB">🇬🇧 +44</option>
+                  </select>
+                  <input id="recipientPhone" required placeholder=" " inputmode="tel" autocomplete="tel-national" value="087 123 4567" />
+                </div>
                 <span>Mobile number</span>
               </label>
+
+              <label class="float-field full">
+                <input id="recipientEmail" type="email" placeholder=" " autocomplete="email" inputmode="email" />
+                <span>Recipient email (optional)</span>
+              </label>
+              <p class="field-helper full">We’ll also email their PintDrop as a backup.</p>
 
               <label class="float-field full">
                 <textarea id="message" rows="3" placeholder=" ">Happy birthday Dad — have one on me 🍻</textarea>
@@ -116,8 +132,8 @@
               </label>
 
               <label class="float-field">
-                <input id="deliveryDate" type="date" placeholder=" " />
-                <span>Delivery date</span>
+                <input id="senderEmail" required type="email" placeholder=" " autocomplete="email" value="ryan@example.com" inputmode="email" />
+                <span>Sender email</span>
               </label>
             </div>
 
@@ -136,7 +152,11 @@
               </div>
             </div>
 
-            <button type="submit" class="primary full checkout-cta">Review PintDrop</button>
+            <p id="orderFormError" class="step-error hidden" role="alert"></p>
+            <div class="mobile-substep-nav recipient-nav">
+              <button type="button" class="secondary ghost-btn mobile-substep-back" data-prev-substep="drink">Back</button>
+              <button type="submit" class="primary full checkout-cta">Review order</button>
+            </div>
           </form>
         </section>
       </section>
@@ -160,8 +180,8 @@
             <div class="price-row total"><span>Total due</span><strong id="reviewTotal">€0.00</strong></div>
           </div>
 
-          <button id="goToPayment" type="button" class="primary wide checkout-cta">Proceed to secure payment</button>
-          <p class="secure-note"><span class="secure-badge">🔒</span> Demo checkout — no real payment is taken.</p>
+          <button id="goToPayment" type="button" class="primary wide checkout-cta">Continue to checkout</button>
+          <p class="secure-note"><span class="secure-badge">🔒</span> Secure checkout — your payment details are encrypted.</p>
         </section>
       </section>
 
@@ -206,7 +226,9 @@
                 </label>
               </div>
             </div>
+            <p id="paymentFormError" class="step-error hidden" role="alert"></p>
             <button id="payButton" type="submit" class="primary full checkout-cta">Pay securely</button>
+            <p class="secure-note payment-secure-note"><span class="secure-badge">🔒</span> Secure checkout — your payment details are encrypted.</p>
           </form>
         </section>
       </section>
@@ -218,9 +240,12 @@
           <p class="eyebrow">Payment successful</p>
           <h2>Your PintDrop has been sent!</h2>
           <p id="successMessage">The recipient has received a message with their voucher.</p>
+          <p id="successSmsWarning" class="step-error hidden" role="alert"></p>
+          <p id="successEmailWarning" class="step-error step-warning-subtle hidden" role="alert"></p>
           <div class="success-checks">
             <span>✓ Payment confirmed</span>
-            <span>✓ SMS delivered</span>
+            <span id="successSmsCheck">✓ SMS delivered</span>
+            <span id="successEmailCheck">✓ Confirmation email sent</span>
             <span>✓ Voucher ready to redeem</span>
           </div>
           <div class="success-reference"><span>Reference</span><strong id="successCode">PD-XXXXXX</strong><small>Keep this for support</small></div>
@@ -287,7 +312,7 @@
 
                 <div class="pass-qr sms-wallet-qr" id="smsWalletQrArea">
                   <div class="scan-line"></div>
-                  <div class="qr-wrap" aria-label="Demo QR code">
+                  <div class="qr-wrap" aria-label="PintDrop voucher QR code">
                     <div class="fake-qr" id="smsWalletFakeQr"></div>
                   </div>
                   <small>Show this QR code to bar staff · Tap to enlarge</small>
@@ -322,38 +347,59 @@
         <div id="voucherBody" class="hidden">
           <div class="pass-header">
             <div class="pintdrop-logo pintdrop-logo-center"><img class="pintdrop-mark pintdrop-mark--wallet" src="images/pintdrop-mark.png" alt="PintDrop" /></div>
-            <span id="voucherStatus" class="status waiting">VALID</span>
+            <div class="pass-status-wrap">
+              <span id="voucherStatus" class="status waiting voucher-status-badge">VALID</span>
+            </div>
           </div>
 
           <div class="pass-gift">
-            <p>YOU'VE BEEN SENT</p>
-            <h2><span id="voucherGiftIcon">🍺</span> <span id="voucherGift"></span></h2>
-            <strong id="voucherPub"></strong>
+            <p class="pass-eyebrow">YOU'VE BEEN SENT</p>
+            <h2 class="pass-gift-title"><span id="voucherGiftIcon">🍺</span> <span id="voucherGift"></span></h2>
+            <p class="pass-pub-line"><strong id="voucherPub"></strong></p>
           </div>
 
-          <blockquote id="voucherMessage"></blockquote>
-
-          <div class="pass-qr" id="voucherQrArea">
-            <div class="scan-line"></div>
-            <div class="qr-wrap" aria-label="Demo QR code">
-              <div class="fake-qr" id="fakeQr"></div>
+          <div class="pass-recipient-card">
+            <div class="pass-people-grid">
+              <div class="pass-people-item">
+                <small>Recipient</small>
+                <strong id="voucherRecipient"></strong>
+              </div>
+              <div class="pass-people-item">
+                <small>From</small>
+                <strong id="voucherSender"></strong>
+              </div>
             </div>
-            <small>Show this QR code to bar staff · Tap to enlarge</small>
+            <blockquote id="voucherMessage" class="pass-message"></blockquote>
           </div>
 
-          <div class="pass-details">
-            <div><small>Recipient</small><strong id="voucherRecipient"></strong></div>
-            <div><small>From</small><strong id="voucherSender"></strong></div>
-            <div><small>Voucher ID</small><strong id="voucherCode"></strong></div>
-            <div><small>Expires</small><strong id="voucherExpiry"></strong></div>
+          <div class="pass-qr-section">
+            <p class="pass-qr-instruction">Show this QR code to bar staff to redeem.</p>
+            <div class="pass-qr" id="voucherQrArea">
+              <div class="scan-line"></div>
+              <div class="qr-wrap" aria-label="PintDrop voucher QR code">
+                <div class="fake-qr" id="fakeQr"></div>
+              </div>
+              <small class="pass-qr-hint">Tap to enlarge</small>
+            </div>
           </div>
 
-          <div id="redeemedStamp" class="redeemed-stamp hidden">
+          <div class="pass-meta">
+            <div class="pass-meta-item">
+              <small>PintDrop reference</small>
+              <strong id="voucherCode"></strong>
+            </div>
+            <div class="pass-meta-item">
+              <small>Expires</small>
+              <strong id="voucherExpiry"></strong>
+            </div>
+          </div>
+
+          <div id="redeemedStamp" class="redeemed-stamp voucher-redeemed-banner hidden">
             <strong>✓ REDEEMED</strong>
             <span id="redeemedWhen"></span>
           </div>
 
-          <div class="pass-actions">
+          <div class="pass-actions pass-actions--sender">
             <button type="button" class="wallet-button"> Add to Apple Wallet</button>
             <button id="shareVoucher" type="button" class="secondary">Share voucher</button>
           </div>
@@ -362,72 +408,120 @@
     </section>
 
     <section id="partner" class="view">
-      <div class="partner-heading">
-        <div class="partner-heading-copy">
-          <img class="pintdrop-logo-img pintdrop-logo-img--partner" src="images/pintdrop-logo.png" alt="PintDrop" />
-          <div class="partner-heading-text">
-            <h1>Pub Partner Dashboard</h1>
-            <p class="partner-pub-name">O'Flaherty's Bar, Buncrana</p>
-          </div>
+      <header class="partner-pilot-header">
+        <img class="pintdrop-mark pintdrop-mark--partner-pilot" src="images/pintdrop-mark.png" alt="PintDrop" />
+        <div class="partner-pilot-heading">
+          <h1>O'Flaherty's Bar</h1>
+          <p class="partner-pilot-badge">Pub Partner</p>
         </div>
-        <button id="resetDemo" class="secondary reset-demo-btn" type="button">↺ Reset demo</button>
-      </div>
+        <button id="resetDemo" class="partner-reset-btn" type="button" aria-label="Reset session" title="Reset session">↺</button>
+      </header>
 
-      <div class="stats partner-stats">
-        <div class="stat partner-stat partner-stat-card">
-          <span class="partner-stat-icon" aria-hidden="true">⏳</span>
-          <span class="partner-stat-label">Waiting vouchers</span>
-          <strong id="statWaiting">0</strong>
-        </div>
-        <div class="stat partner-stat partner-stat-card">
-          <span class="partner-stat-icon" aria-hidden="true">✓</span>
-          <span class="partner-stat-label">Redeemed today</span>
-          <strong id="statRedeemedToday">0</strong>
-        </div>
-        <div class="stat partner-stat partner-stat-card partner-stat-highlight">
-          <span class="partner-stat-icon" aria-hidden="true">€</span>
-          <span class="partner-stat-label">Value redeemed today</span>
-          <strong id="statValueToday">€0.00</strong>
-        </div>
-      </div>
+      <section class="card partner-scan-card partner-pilot-scan">
+        <button id="scanLatestVoucher" type="button" class="partner-scan-primary">SCAN PINTDROP</button>
 
-      <section class="card partner-scan-card">
-        <h2>Redeem a voucher</h2>
-        <p class="partner-scan-lead">Scan or search a customer voucher to redeem it at the bar.</p>
-        <button id="scanLatestVoucher" type="button" class="scan-button scan-button-primary partner-scan-btn">▣ Scan latest voucher</button>
         <div id="scannerDemo" class="scanner-demo hidden">
-          <p id="scannerStatus" class="scanner-status">Scanning voucher…</p>
+          <p id="scannerStatus" class="scanner-status">Point the camera at the customer’s voucher QR code…</p>
           <div class="scanner-frame">
+            <div id="partnerQrScanner" class="partner-qr-scanner">
+              <video id="partnerQrVideo" class="partner-qr-video" playsinline webkit-playsinline muted autoplay></video>
+            </div>
             <div class="scanner-viewfinder"></div>
             <i class="scanner-line"></i>
             <span>Align QR code inside the frame</span>
           </div>
         </div>
-        <form id="redeemForm" class="partner-search-form">
-          <label>
-            Enter customer code
-            <input id="redeemCode" placeholder="PD-XXXXXX" />
-          </label>
-          <button type="submit" class="secondary redeem-submit-btn">Find voucher</button>
-        </form>
+
+        <div class="partner-manual-entry">
+          <p class="partner-manual-label">Enter code manually</p>
+          <form id="redeemForm" class="partner-manual-form">
+            <input id="redeemCode" placeholder="PD-XXXXXX" inputmode="text" autocapitalize="characters" autocomplete="off" />
+            <button type="submit" class="partner-manual-submit">Find voucher</button>
+          </form>
+        </div>
         <div id="redeemResult"></div>
       </section>
 
-      <section class="card partner-activity-card">
-        <h2>Recent activity</h2>
-        <div id="activityList" class="activity-list"></div>
+      <section class="card partner-activity-card partner-pilot-history">
+        <div class="partner-section-head">
+          <h2>Recent redemptions</h2>
+          <div class="partner-filters partner-history-filters" role="tablist" aria-label="Filter redemptions">
+            <button type="button" class="partner-filter active" data-partner-history-filter="today">Today</button>
+            <button type="button" class="partner-filter" data-partner-history-filter="week">This week</button>
+            <button type="button" class="partner-filter" data-partner-history-filter="month">This month</button>
+            <button type="button" class="partner-filter" data-partner-history-filter="all">All</button>
+          </div>
+        </div>
+        <div id="activityList" class="partner-redemption-list"></div>
       </section>
+    </section>
 
-      <div class="grid two partner-grid">
-        <section class="card partner-waiting-card">
-          <h2>Waiting vouchers</h2>
-          <div id="waitingList" class="voucher-list partner-voucher-list"></div>
-        </section>
+    <section id="redemption" class="view">
+      <div class="redemption-page">
+        <header class="redemption-header">
+          <img class="pintdrop-mark pintdrop-mark--redemption" src="images/pintdrop-mark.png" alt="PintDrop" />
+          <p class="redemption-pub-label">O'Flaherty's Bar · Pub Partner</p>
+        </header>
 
-        <section class="card partner-redeemed-card">
-          <h2>Redeemed vouchers</h2>
-          <div id="redeemedList" class="voucher-list partner-voucher-list"></div>
-        </section>
+        <div id="redemptionAlreadyBanner" class="redemption-already-banner hidden" role="status">
+          Already redeemed — cannot redeem again
+        </div>
+
+        <div class="redemption-status-wrap">
+          <span id="redemptionStatus" class="redemption-status status waiting">VALID</span>
+        </div>
+
+        <div class="redemption-gift-block">
+          <p class="redemption-label">Drink</p>
+          <h2 id="redemptionGift" class="redemption-gift">🍺 Pint</h2>
+        </div>
+
+        <dl class="redemption-details">
+          <div class="redemption-detail">
+            <dt>Recipient</dt>
+            <dd id="redemptionRecipient">Dad</dd>
+          </div>
+          <div class="redemption-detail">
+            <dt>From</dt>
+            <dd id="redemptionSender">Ryan</dd>
+          </div>
+          <div class="redemption-detail redemption-detail--message">
+            <dt>Personal message</dt>
+            <dd id="redemptionMessage">“Happy birthday Dad — have one on me 🍻”</dd>
+          </div>
+          <div class="redemption-detail">
+            <dt>PintDrop reference</dt>
+            <dd id="redemptionCode" class="redemption-ref">PD-XXXXXX</dd>
+          </div>
+          <div class="redemption-detail redemption-detail--pub">
+            <dt>Pub</dt>
+            <dd id="redemptionPub">O'Flaherty's Bar, Buncrana</dd>
+          </div>
+        </dl>
+
+        <p id="redemptionTime" class="redemption-time hidden"></p>
+        <p id="redemptionSuccess" class="redemption-success hidden">Pint redeemed successfully.</p>
+
+        <div class="redemption-actions">
+          <button id="redemptionRedeemBtn" type="button" class="primary redemption-redeem-btn">REDEEM PINT</button>
+          <button id="redemptionBackBtn" type="button" class="secondary redemption-back-btn">← Back to dashboard</button>
+        </div>
+
+        <div id="redemptionEmpty" class="redemption-empty hidden">
+          <p id="redemptionEmptyMessage">No voucher found.</p>
+          <button type="button" class="secondary" id="redemptionEmptyBack">Back to dashboard</button>
+        </div>
+      </div>
+
+      <div id="redemptionConfirm" class="redemption-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="redemptionConfirmTitle">
+        <div class="redemption-confirm-box">
+          <h3 id="redemptionConfirmTitle">Confirm redemption?</h3>
+          <p id="redemptionConfirmCopy">Tap confirm once the drink has been served.</p>
+          <div class="redemption-confirm-actions">
+            <button type="button" class="secondary" id="redemptionConfirmCancel">Cancel</button>
+            <button type="button" class="primary" id="redemptionConfirmOk">Confirm</button>
+          </div>
+        </div>
       </div>
     </section>
     <div id="senderNotification" class="sender-notification hidden">
@@ -453,7 +547,12 @@
     </div>
 </main>
 
-  <footer>PintDrop interactive demo • Data is stored only in this browser</footer>
-  <script src="app.js"></script>
+  <footer>© PintDrop · Send a pint to their local</footer>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+  <script src="supabase-config.js?v=20260809-stripe-test1"></script>
+  <script src="app.js?v=20260809-stripe-test1"></script>
 </body>
 </html>
