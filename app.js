@@ -2091,6 +2091,42 @@ function computePeriodSummary(vouchers, period) {
   };
 }
 
+async function startPartnerPayoutSetup() {
+  const button = $("setupPayoutsBtn");
+  const status = $("stripeConnectStatus");
+  if (!button || button.disabled) return;
+
+  button.disabled = true;
+  if (status) status.textContent = "Opening Stripe payout setup…";
+
+  try {
+    const response = await fetch("/api/stripe-connect/account-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pubId: PARTNER_SUPABASE_PUB_ID })
+    });
+
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (error) {
+      console.warn("[PintDrop Stripe Connect] Invalid account-link response:", error);
+    }
+
+    if (!response.ok || !data?.url) {
+      throw new Error(data?.error || "Could not start payout setup.");
+    }
+
+    window.location.href = data.url;
+  } catch (error) {
+    console.warn("[PintDrop Stripe Connect] Payout setup failed:", error);
+    if (status) {
+      status.textContent = error?.message || "Could not start payout setup.";
+    }
+    button.disabled = false;
+  }
+}
+
 async function renderPartner() {
   await loadPartnerVouchers();
   const vouchers = getPartnerVouchers();
@@ -2305,6 +2341,9 @@ async function resetDemoState() {
 }
 
 $("resetDemo").addEventListener("click", resetDemoState);
+$("setupPayoutsBtn")?.addEventListener("click", () => {
+  void startPartnerPayoutSetup();
+});
 
 document.querySelectorAll("[data-partner-history-filter]").forEach(btn => {
   btn.addEventListener("click", () => setPartnerHistoryFilter(btn.dataset.partnerHistoryFilter));
