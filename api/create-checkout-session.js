@@ -1,6 +1,7 @@
 const Stripe = require("stripe");
 const { calculateServiceFee, calculateOrderTotal } = require("./_lib/pricing");
 const { supabaseRpc } = require("./_lib/connect-helpers");
+const { buildCheckoutMetadata } = require("./_lib/fulfillment");
 
 function getRequestOrigin(req) {
   const proto = req.headers["x-forwarded-proto"] || "https";
@@ -104,9 +105,18 @@ module.exports = async function handler(req, res) {
     const parsedFee = Number(body.fee);
     const parsedTotal = Number(body.total);
     const pubId = Number(body.pubId);
+    const drinkId = Number(body.drinkId);
     const giftName = String(body.giftName || "PintDrop gift").trim();
     const pubName = String(body.pubName || "").trim();
+    const pubLocation = String(body.pubLocation || "").trim();
+    const drinkIcon = String(body.drinkIcon || "🍺").trim();
     const senderEmail = String(body.senderEmail || "").trim().toLowerCase();
+    const senderName = String(body.senderName || "").trim();
+    const recipientName = String(body.recipientName || "").trim();
+    const recipientPhone = String(body.recipientPhone || "").trim();
+    const recipientEmail = String(body.recipientEmail || "").trim().toLowerCase();
+    const message = String(body.message || "").trim();
+    const deliveryDate = String(body.deliveryDate || new Date().toISOString().slice(0, 10)).trim();
 
     if (!Number.isFinite(parsedGiftPrice) || parsedGiftPrice <= 0) {
       res.status(400).json({ ok: false, error: "Invalid gift price." });
@@ -123,6 +133,21 @@ module.exports = async function handler(req, res) {
 
     if (!Number.isFinite(parsedTotal) || Math.abs(parsedTotal - expectedTotal) > 0.001) {
       res.status(400).json({ ok: false, error: "Order total mismatch." });
+      return;
+    }
+
+    if (!Number.isFinite(pubId) || pubId <= 0) {
+      res.status(400).json({ ok: false, error: "pubId is required." });
+      return;
+    }
+
+    if (!Number.isFinite(drinkId) || drinkId <= 0) {
+      res.status(400).json({ ok: false, error: "drinkId is required." });
+      return;
+    }
+
+    if (!recipientName || !recipientPhone || !senderName || !senderEmail) {
+      res.status(400).json({ ok: false, error: "Recipient and sender details are required." });
       return;
     }
 
@@ -171,11 +196,24 @@ module.exports = async function handler(req, res) {
       success_url: origin + "/?stripe=success&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: origin + "/?stripe=cancelled",
       metadata: {
-        gift_name: giftName,
-        pub_name: pubName,
-        pub_id: Number.isFinite(pubId) && pubId > 0 ? String(pubId) : "",
-        gift_price: String(parsedGiftPrice),
-        service_fee: String(parsedFee),
+        ...buildCheckoutMetadata({
+          pubId,
+          drinkId,
+          pubName,
+          pubLocation,
+          drinkName: giftName,
+          drinkIcon,
+          giftPrice: parsedGiftPrice,
+          serviceFee: parsedFee,
+          total: parsedTotal,
+          recipientName,
+          recipientPhone,
+          recipientEmail,
+          senderName,
+          senderEmail,
+          message: message || `A PintDrop from ${senderName}`,
+          deliveryDate
+        }),
         checkout_mode: connectAccountId ? "connect" : "platform",
         connect_skip_reason: connectAccountId ? "" : connectSkipReason
       }

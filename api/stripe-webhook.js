@@ -1,9 +1,10 @@
-const Stripe = require("stripe");
 const {
   createStripeClient,
   readRawBody,
   syncStripeAccountToSupabase
 } = require("./_lib/connect-helpers");
+const { fulfillCheckoutSession } = require("./_lib/fulfillment");
+const Stripe = require("stripe");
 
 async function handler(req, res) {
   if (req.method !== "POST") {
@@ -43,6 +44,24 @@ async function handler(req, res) {
     if (event.type === "account.updated") {
       const account = event.data.object;
       await syncStripeAccountToSupabase(account);
+    }
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      if (session.payment_status === "paid") {
+        try {
+          const result = await fulfillCheckoutSession(session);
+          console.log("[stripe-webhook] Checkout fulfilled:", {
+            sessionId: session.id,
+            voucherCode: result?.voucher?.code,
+            fulfillmentStatus: result?.voucher?.fulfillmentStatus
+          });
+        } catch (error) {
+          console.error("[stripe-webhook] Checkout fulfillment failed:", error);
+          res.status(500).json({ ok: false, error: "Checkout fulfillment failed." });
+          return;
+        }
+      }
     }
 
     res.status(200).json({ ok: true, received: true, type: event.type });
