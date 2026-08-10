@@ -77,7 +77,24 @@ function ensureSelectedGiftValid() {
   }
 }
 
-const SERVICE_FEE = 0.50;
+const SERVICE_FEE_RATE = 0.15;
+
+function calculateServiceFee(menuPrice) {
+  const price = Number(menuPrice);
+  if (!Number.isFinite(price) || price <= 0) {
+    return 0;
+  }
+  return Math.round(price * SERVICE_FEE_RATE * 100) / 100;
+}
+
+function calculateOrderTotal(menuPrice) {
+  const price = Number(menuPrice);
+  if (!Number.isFinite(price) || price <= 0) {
+    return 0;
+  }
+  return Math.round((price + calculateServiceFee(price)) * 100) / 100;
+}
+
 const PENDING_ORDER_STORAGE_KEY = "pintdrop_pending_order";
 const LOGO = {
   mark: "images/pintdrop-mark.png",
@@ -246,8 +263,8 @@ function buildDemoVoucher({
     sender,
     message,
     deliveryDate: createdAt.slice(0, 10),
-    fee: SERVICE_FEE,
-    total: gift.price + SERVICE_FEE,
+    fee: calculateServiceFee(gift.price),
+    total: calculateOrderTotal(gift.price),
     createdAt,
     expiresAt: new Date(new Date(createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     status: resolvedStatus,
@@ -791,7 +808,7 @@ function filterPubList(query) {
 function renderSummary() {
   $("summaryPub").textContent = `${selectedPub.name}, ${selectedPub.town}`;
   $("summaryGift").textContent = selectedGift.name;
-  $("summaryPrice").textContent = money(selectedGift.price + SERVICE_FEE);
+  $("summaryPrice").textContent = money(calculateOrderTotal(selectedGift.price));
 }
 
 function setRecipientVoucherMode(active) {
@@ -1385,8 +1402,8 @@ function buildPendingOrder() {
     senderEmail,
     message: $("message").value.trim() || `A PintDrop from ${sender}`,
     deliveryDate,
-    fee: SERVICE_FEE,
-    total: selectedGift.price + SERVICE_FEE
+    fee: calculateServiceFee(selectedGift.price),
+    total: calculateOrderTotal(selectedGift.price)
   };
 }
 
@@ -1500,7 +1517,8 @@ async function createStripeCheckoutSession() {
       fee: pendingOrder.fee,
       giftName: pendingOrder.gift.name,
       pubName: pendingOrder.pub.name,
-      senderEmail: pendingOrder.senderEmail
+      senderEmail: pendingOrder.senderEmail,
+      pubId: pendingOrder.pub.supabaseId || undefined
     })
   });
 
