@@ -180,56 +180,9 @@
             <div class="price-row total"><span>Total due</span><strong id="reviewTotal">€0.00</strong></div>
           </div>
 
-          <button id="goToPayment" type="button" class="primary wide checkout-cta">Continue to checkout</button>
+          <p id="reviewCheckoutError" class="step-error hidden" role="alert"></p>
+          <button id="goToPayment" type="button" class="primary wide checkout-cta">Pay securely</button>
           <p class="secure-note"><span class="secure-badge">🔒</span> Secure checkout — your payment details are encrypted.</p>
-        </section>
-      </section>
-
-      <section id="paymentStep" class="purchase-step">
-        <section class="card flow-card checkout-card payment-card">
-          <div class="flow-heading">
-            <div>
-              <p class="eyebrow">Secure payment</p>
-              <h2>Pay for your PintDrop</h2>
-              <p class="section-lead">Complete your order in seconds.</p>
-            </div>
-            <button type="button" class="secondary ghost-btn" data-back-to="review">Back</button>
-          </div>
-
-          <div class="payment-summary checkout-order-banner">
-            <span id="paymentGiftIcon" class="payment-icon">🍺</span>
-            <div class="payment-copy">
-              <strong id="paymentGiftName">Pint</strong>
-              <small id="paymentPubName">O'Flaherty's Bar</small>
-            </div>
-            <strong id="paymentTotal" class="payment-amount">€7.00</strong>
-          </div>
-
-          <form id="paymentForm" class="payment-form">
-            <div class="payment-fields">
-              <label class="float-field full">
-                <input id="cardName" required placeholder=" " autocomplete="cc-name" />
-                <span>Cardholder name</span>
-              </label>
-              <label class="float-field full">
-                <input id="cardNumber" required value="4242 4242 4242 4242" placeholder=" " inputmode="numeric" autocomplete="cc-number" />
-                <span>Card number</span>
-              </label>
-              <div class="payment-row">
-                <label class="float-field">
-                  <input id="cardExpiry" required value="12/29" placeholder=" " inputmode="numeric" autocomplete="cc-exp" />
-                  <span>Expiry</span>
-                </label>
-                <label class="float-field">
-                  <input id="cardCvc" required value="123" placeholder=" " inputmode="numeric" autocomplete="cc-csc" />
-                  <span>CVC</span>
-                </label>
-              </div>
-            </div>
-            <p id="paymentFormError" class="step-error hidden" role="alert"></p>
-            <button id="payButton" type="submit" class="primary full checkout-cta">Pay securely</button>
-            <p class="secure-note payment-secure-note"><span class="secure-badge">🔒</span> Secure checkout — your payment details are encrypted.</p>
-          </form>
         </section>
       </section>
 

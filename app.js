@@ -464,7 +464,6 @@ async function applyDemoDefaults() {
   $("senderName").value = DEMO.sender;
   if ($("senderEmail")) $("senderEmail").value = DEMO.senderEmail;
   $("message").value = DEMO.message;
-  if ($("cardName")) $("cardName").value = DEMO.sender;
   setCustomerSubStep("pub");
   resetSuccessDeliveryState();
   renderChoices();
@@ -511,7 +510,7 @@ function resetProcessingSteps() {
 }
 
 function setPurchaseStep(step) {
-  const steps = ["details", "review", "payment", "success"];
+  const steps = ["details", "review", "success"];
   steps.forEach(name => {
     $(`${name}Step`).classList.toggle("active", name === step);
   });
@@ -519,7 +518,7 @@ function setPurchaseStep(step) {
   if (step === "details") {
     updateJourneyProgress(customerSubStep === "pub" ? 1 : customerSubStep === "drink" ? 2 : 3);
   } else {
-    const journeyMap = { review: 4, payment: 5, success: 6 };
+    const journeyMap = { review: 4, success: 6 };
     updateJourneyProgress(journeyMap[step], step === "success");
   }
 
@@ -555,7 +554,7 @@ function clearStepErrors() {
   $("pubStepError")?.classList.add("hidden");
   $("giftStepError")?.classList.add("hidden");
   $("orderFormError")?.classList.add("hidden");
-  $("paymentFormError")?.classList.add("hidden");
+  $("reviewCheckoutError")?.classList.add("hidden");
 }
 
 function showStepError(id, message) {
@@ -1431,20 +1430,37 @@ function renderReview() {
   $("reviewGiftPrice").textContent = money(pendingOrder.gift.price);
   $("reviewFee").textContent = money(pendingOrder.fee);
   $("reviewTotal").textContent = money(pendingOrder.total);
+  const payButton = $("goToPayment");
+  if (payButton) payButton.textContent = `Pay ${money(pendingOrder.total)} securely`;
 }
 
-function renderPayment() {
-  if (!pendingOrder) return;
-  $("paymentGiftIcon").textContent = pendingOrder.gift.icon;
-  $("paymentGiftName").textContent = pendingOrder.gift.name;
-  $("paymentPubName").textContent = `${pendingOrder.pub.name}, ${pendingOrder.pub.town}`;
-  $("paymentTotal").textContent = money(pendingOrder.total);
-  $("payButton").textContent = `Pay ${money(pendingOrder.total)} securely`;
-  $("cardName").value = pendingOrder.sender;
+async function startStripeCheckout() {
+  if (!pendingOrder || paymentProcessing) return;
+
+  paymentProcessing = true;
+  const button = $("goToPayment");
+  if (button) button.disabled = true;
+  $("reviewCheckoutError")?.classList.add("hidden");
+  updateJourneyProgress(5);
+
+  try {
+    savePendingOrderForStripe();
+    const checkout = await createStripeCheckoutSession();
+    window.location.href = checkout.url;
+  } catch (error) {
+    console.warn("[PintDrop Stripe] Checkout start failed:", error);
+    showStepError(
+      "reviewCheckoutError",
+      error?.message || "Could not start secure checkout. Please try again."
+    );
+    paymentProcessing = false;
+    if (button) button.disabled = false;
+    updateJourneyProgress(4);
+  }
 }
 
 async function completeCheckoutAfterPayment() {
-  const button = $("payButton");
+  const button = $("goToPayment");
   const overlay = $("processingOverlay");
   paymentProcessing = true;
   if (button) button.disabled = true;
@@ -1584,8 +1600,12 @@ async function handleStripeReturn() {
     clearStripeQueryParams();
     paymentProcessing = false;
     if (pendingOrder) {
-      renderPayment();
-      setPurchaseStep("payment");
+      renderReview();
+      setPurchaseStep("review");
+      showStepError(
+        "reviewCheckoutError",
+        "Checkout was cancelled. You can try again when ready."
+      );
     } else {
       setPurchaseStep("details");
     }
@@ -1605,15 +1625,15 @@ async function handleStripeReturn() {
 
     try {
       await verifyStripeCheckoutSession(sessionId);
-      setPurchaseStep("payment");
+      setPurchaseStep("review");
       await completeCheckoutAfterPayment();
     } catch (error) {
       console.warn("[PintDrop Stripe] Payment verification failed:", error);
       paymentProcessing = false;
-      renderPayment();
-      setPurchaseStep("payment");
+      renderReview();
+      setPurchaseStep("review");
       showStepError(
-        "paymentFormError",
+        "reviewCheckoutError",
         error?.message || "Payment could not be verified. Please try again."
       );
     }
@@ -1801,32 +1821,7 @@ document.querySelectorAll("[data-prev-substep]").forEach(btn => {
 });
 
 $("goToPayment").addEventListener("click", () => {
-  renderPayment();
-  setPurchaseStep("payment");
-});
-
-$("paymentForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!pendingOrder || paymentProcessing) return;
-
-  paymentProcessing = true;
-  const button = $("payButton");
-  button.disabled = true;
-  $("paymentFormError")?.classList.add("hidden");
-
-  try {
-    savePendingOrderForStripe();
-    const checkout = await createStripeCheckoutSession();
-    window.location.href = checkout.url;
-  } catch (error) {
-    console.warn("[PintDrop Stripe] Checkout start failed:", error);
-    showStepError(
-      "paymentFormError",
-      error?.message || "Could not start secure checkout. Please try again."
-    );
-    paymentProcessing = false;
-    button.disabled = false;
-  }
+  startStripeCheckout();
 });
 
 $("viewVoucher").addEventListener("click", () => switchView("sms"));
