@@ -90,10 +90,23 @@ function getSupabaseServiceRoleKey() {
 }
 
 function getAdminKeyFromRequest(req) {
-  const headerKey = String(req.headers["x-pintdrop-admin-key"] || "").trim();
+  const headers = req.headers;
+  if (!headers) return "";
+
+  let headerKey = "";
+  if (typeof headers.get === "function") {
+    headerKey = String(headers.get("x-pintdrop-admin-key") || "").trim();
+  } else {
+    headerKey = String(headers["x-pintdrop-admin-key"] || "").trim();
+  }
   if (headerKey) return headerKey;
 
-  const authHeader = String(req.headers.authorization || "").trim();
+  let authHeader = "";
+  if (typeof headers.get === "function") {
+    authHeader = String(headers.get("authorization") || "").trim();
+  } else {
+    authHeader = String(headers.authorization || "").trim();
+  }
   if (authHeader.toLowerCase().startsWith("bearer ")) {
     return authHeader.slice(7).trim();
   }
