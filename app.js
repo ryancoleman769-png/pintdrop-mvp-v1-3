@@ -121,6 +121,14 @@ let partnerHistoryFilter = "today";
 
 const PARTNER_PUB_ID = "oflahertys";
 const PARTNER_SUPABASE_PUB_ID = 1;
+const PARTNER_DRINK_SUPABASE_IDS = {
+  pint: 1,
+  wine: 2,
+  cocktail: 3,
+  spirit: 4,
+  soft: 5,
+  tab: 6
+};
 const PARTNER_DEMO_SEED_KEY = "pintdrop_partner_demo_seeded";
 
 let partnerVouchers = null;
@@ -1614,6 +1622,20 @@ function getCheckoutPubId(pub) {
   return undefined;
 }
 
+function getCheckoutDrinkId(gift, pub) {
+  const supabaseId = Number(gift?.supabaseId);
+  if (Number.isFinite(supabaseId) && supabaseId > 0) {
+    return supabaseId;
+  }
+  if (getCheckoutPubId(pub) === PARTNER_SUPABASE_PUB_ID && gift?.id) {
+    const mapped = PARTNER_DRINK_SUPABASE_IDS[gift.id];
+    if (Number.isFinite(mapped) && mapped > 0) {
+      return mapped;
+    }
+  }
+  return undefined;
+}
+
 async function createStripeCheckoutSession() {
   const response = await fetch("/api/create-checkout-session", {
     method: "POST",
@@ -1623,7 +1645,7 @@ async function createStripeCheckoutSession() {
       giftPrice: pendingOrder.gift.price,
       fee: pendingOrder.fee,
       giftName: pendingOrder.gift.name,
-      drinkId: pendingOrder.gift.supabaseId,
+      drinkId: getCheckoutDrinkId(pendingOrder.gift, pendingOrder.pub),
       drinkIcon: pendingOrder.gift.icon,
       pubName: pendingOrder.pub.name,
       pubLocation: pendingOrder.pub.town,
