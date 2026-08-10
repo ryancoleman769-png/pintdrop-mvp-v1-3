@@ -3246,6 +3246,19 @@ body.partner-active .topbar .pintdrop-logo-text small {
   border-color: rgba(106, 203, 69, 0.5);
 }
 
+.partner-payouts-btn.partner-payouts-connected {
+  cursor: default;
+  color: var(--green);
+  background: rgba(106, 203, 69, 0.16);
+  border-color: rgba(106, 203, 69, 0.45);
+  box-shadow: none;
+}
+
+.partner-payouts-btn.partner-payouts-connected:hover {
+  background: rgba(106, 203, 69, 0.16);
+  border-color: rgba(106, 203, 69, 0.45);
+}
+
 .partner-scan-primary {
   width: 100%;
   margin: 0 0 18px;

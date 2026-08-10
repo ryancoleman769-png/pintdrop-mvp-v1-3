@@ -2115,8 +2115,11 @@ async function refreshPartnerPayoutStatus() {
 
     if (data.stripePayoutsReady === true) {
       status.textContent = "Payout setup: Payouts ready";
+      setPartnerPayoutsAction(true);
       return;
     }
+
+    setPartnerPayoutsAction(false);
 
     if (data.stripeOnboardingStatus === "not_started") {
       status.textContent = "Payout setup: Not started";
@@ -2127,6 +2130,22 @@ async function refreshPartnerPayoutStatus() {
   } catch (error) {
     console.warn("[PintDrop Stripe Connect] Payout status refresh failed:", error);
   }
+}
+
+function setPartnerPayoutsAction(ready) {
+  const button = $("setupPayoutsBtn");
+  if (!button) return;
+
+  if (ready) {
+    button.disabled = true;
+    button.textContent = "✓ Payouts connected";
+    button.classList.add("partner-payouts-connected");
+    return;
+  }
+
+  button.disabled = false;
+  button.textContent = "Set up payouts";
+  button.classList.remove("partner-payouts-connected");
 }
 
 async function startPartnerPayoutSetup() {
