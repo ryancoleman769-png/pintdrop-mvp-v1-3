@@ -50,14 +50,30 @@ async function loadPubConnectState(pubId) {
   }
 }
 
-function canUseConnectCheckout(pub) {
+async function resolveConnectAccountId(stripe, pub) {
   if (!pub?.stripe_account_id) {
-    return null;
+    return { accountId: null, skipReason: "no_stripe_account" };
   }
-  if (!pub.stripe_charges_enabled) {
-    return null;
+
+  const accountId = String(pub.stripe_account_id).trim();
+  if (!accountId) {
+    return { accountId: null, skipReason: "no_stripe_account" };
   }
-  return String(pub.stripe_account_id).trim();
+
+  if (pub.stripe_payouts_ready || pub.stripe_charges_enabled) {
+    return { accountId, skipReason: "" };
+  }
+
+  try {
+    const account = await stripe.accounts.retrieve(accountId);
+    if (account.charges_enabled) {
+      return { accountId, skipReason: "" };
+    }
+    return { accountId: null, skipReason: "account_not_charge_ready" };
+  } catch (error) {
+    console.warn("[create-checkout-session] Stripe account lookup failed:", error);
+    return { accountId: null, skipReason: "account_lookup_failed" };
+  }
 }
 
 module.exports = async function handler(req, res) {
@@ -122,7 +138,18 @@ module.exports = async function handler(req, res) {
     const pubConnect = Number.isFinite(pubId) && pubId > 0
       ? await loadPubConnectState(pubId)
       : null;
-    const connectAccountId = canUseConnectCheckout(pubConnect);
+    let connectAccountId = null;
+    let connectSkipReason = "missing_pub_id";
+
+    if (!Number.isFinite(pubId) || pubId <= 0) {
+      connectSkipReason = "missing_pub_id";
+    } else if (!pubConnect) {
+      connectSkipReason = "pub_lookup_failed";
+    } else {
+      const resolved = await resolveConnectAccountId(stripe, pubConnect);
+      connectAccountId = resolved.accountId;
+      connectSkipReason = resolved.skipReason || (connectAccountId ? "" : "account_not_charge_ready");
+    }
 
     const sessionParams = {
       mode: "payment",
@@ -149,7 +176,8 @@ module.exports = async function handler(req, res) {
         pub_id: Number.isFinite(pubId) && pubId > 0 ? String(pubId) : "",
         gift_price: String(parsedGiftPrice),
         service_fee: String(parsedFee),
-        checkout_mode: connectAccountId ? "connect" : "platform"
+        checkout_mode: connectAccountId ? "connect" : "platform",
+        connect_skip_reason: connectAccountId ? "" : connectSkipReason
       }
     };
 

@@ -1,5 +1,5 @@
 const DEMO_PUBS = [
-  { id: "oflahertys", name: "O'Flaherty's Bar", town: "Buncrana", icon: "🍺", image: "images/oflahertys-bar.jpg", participating: true },
+  { id: "oflahertys", supabaseId: 1, name: "O'Flaherty's Bar", town: "Buncrana", icon: "🍺", image: "images/oflahertys-bar.jpg", participating: true },
   { id: "drift", name: "The Drift Inn", town: "Buncrana", icon: "🍻", participating: true },
   { id: "local", name: "Your Local", town: "Coming soon", icon: "📍", participating: false }
 ];
@@ -1507,6 +1507,17 @@ function clearStripeQueryParams() {
   history.replaceState(null, "", url.pathname + url.search + url.hash);
 }
 
+function getCheckoutPubId(pub) {
+  const supabaseId = Number(pub?.supabaseId);
+  if (Number.isFinite(supabaseId) && supabaseId > 0) {
+    return supabaseId;
+  }
+  if (pub?.id === PARTNER_PUB_ID) {
+    return PARTNER_SUPABASE_PUB_ID;
+  }
+  return undefined;
+}
+
 async function createStripeCheckoutSession() {
   const response = await fetch("/api/create-checkout-session", {
     method: "POST",
@@ -1518,7 +1529,7 @@ async function createStripeCheckoutSession() {
       giftName: pendingOrder.gift.name,
       pubName: pendingOrder.pub.name,
       senderEmail: pendingOrder.senderEmail,
-      pubId: pendingOrder.pub.supabaseId || undefined
+      pubId: getCheckoutPubId(pendingOrder.pub)
     })
   });
 
