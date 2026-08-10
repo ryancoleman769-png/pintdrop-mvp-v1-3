@@ -2091,6 +2091,44 @@ function computePeriodSummary(vouchers, period) {
   };
 }
 
+async function refreshPartnerPayoutStatus() {
+  const status = $("stripeConnectStatus");
+  if (!status) return;
+
+  try {
+    const response = await fetch("/api/stripe-connect/account-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pubId: PARTNER_SUPABASE_PUB_ID })
+    });
+
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (error) {
+      console.warn("[PintDrop Stripe Connect] Invalid account-status response:", error);
+    }
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(data?.error || "Could not load payout status.");
+    }
+
+    if (data.stripePayoutsReady === true) {
+      status.textContent = "Payout setup: Payouts ready";
+      return;
+    }
+
+    if (data.stripeOnboardingStatus === "not_started") {
+      status.textContent = "Payout setup: Not started";
+      return;
+    }
+
+    status.textContent = "Payout setup: Setup incomplete";
+  } catch (error) {
+    console.warn("[PintDrop Stripe Connect] Payout status refresh failed:", error);
+  }
+}
+
 async function startPartnerPayoutSetup() {
   const button = $("setupPayoutsBtn");
   const status = $("stripeConnectStatus");
@@ -2143,6 +2181,8 @@ async function renderPartner() {
   $("activityList").innerHTML = activity.length
     ? activity.map(voucher => partnerRedemptionItem(voucher)).join("")
     : `<p class="note partner-history-empty">No redemptions for this period.</p>`;
+
+  void refreshPartnerPayoutStatus();
 }
 
 function setPartnerHistoryFilter(period) {
