@@ -267,6 +267,8 @@ module.exports = {
   handleOptions,
   requirePost,
   createStripeClient,
+  getSupabaseUrl,
+  getSupabaseServiceRoleKey,
   requireAdminKey,
   requireSupabaseServiceRole,
   supabaseRpc,
