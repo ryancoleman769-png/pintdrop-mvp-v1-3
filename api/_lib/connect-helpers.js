@@ -96,7 +96,8 @@ function getAdminKeyFromRequest(req) {
   let headerKey = "";
   if (typeof headers.get === "function") {
     headerKey = String(headers.get("x-pintdrop-admin-key") || "").trim();
-  } else {
+  }
+  if (!headerKey) {
     headerKey = String(headers["x-pintdrop-admin-key"] || "").trim();
   }
   if (headerKey) return headerKey;
@@ -104,7 +105,8 @@ function getAdminKeyFromRequest(req) {
   let authHeader = "";
   if (typeof headers.get === "function") {
     authHeader = String(headers.get("authorization") || "").trim();
-  } else {
+  }
+  if (!authHeader) {
     authHeader = String(headers.authorization || "").trim();
   }
   if (authHeader.toLowerCase().startsWith("bearer ")) {
