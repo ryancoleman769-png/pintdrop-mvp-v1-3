@@ -23,6 +23,7 @@ async function assertRecipientNameStartsBlank(page) {
 }
 
 async function assertBarTabPricing(page) {
+  await page.goto(PREVIEW_URL, { waitUntil: "networkidle" });
   await page.locator('[data-customer-substep="pub"] .venue-card:not(.is-disabled)').first().click();
   await page.locator('[data-next-substep="drink"]').click();
 
