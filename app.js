@@ -1492,9 +1492,9 @@ async function completeCheckoutAfterPayment(sessionId) {
 
   const pollStartedAt = performance.now();
   clientCheckoutSmsResult = null;
-  const fulfillment = await pollCheckoutFulfillment(sessionId, { triggerDelivery: false });
+  const fulfillment = await fetchCheckoutFulfillment(sessionId, { triggerDelivery: false });
   const pollMs = Math.round(performance.now() - pollStartedAt);
-  console.log("[PintDrop Fulfillment] Voucher poll finished", {
+  console.log("[PintDrop Fulfillment] Voucher ready", {
     sessionId,
     pollMs,
     hasVoucher: Boolean(fulfillment?.voucher),
