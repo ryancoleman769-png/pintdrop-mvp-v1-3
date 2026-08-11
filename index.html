@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260809-recipient-email1" />
+  <link rel="stylesheet" href="styles.css?v=20260811-mobile-stripe1" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -121,9 +121,8 @@
               </label>
               <p class="field-helper full">We’ll also email their PintDrop as a backup.</p>
 
-              <label class="float-field full">
-                <textarea id="message" rows="3" placeholder=" ">Happy birthday Dad — have one on me 🍻</textarea>
-                <span>Personal message</span>
+              <label class="float-field full message-field">
+                <textarea id="message" rows="3" placeholder="Add a personal message (optional)"></textarea>
               </label>
 
               <label class="float-field">
@@ -513,7 +512,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260809-stripe-test1"></script>
-  <script src="app.js?v=20260809-stripe-test1"></script>
+  <script src="supabase-config.js?v=20260811-mobile-stripe1"></script>
+  <script src="app.js?v=20260811-mobile-stripe1"></script>
 </body>
 </html>

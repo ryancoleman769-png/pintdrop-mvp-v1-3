@@ -1391,6 +1391,13 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   resize: vertical;
   padding-top: 32px;
 }
+#customer .float-field.message-field textarea {
+  padding-top: 18px;
+}
+#customer .float-field.message-field textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
 #customer .float-field span {
   position: absolute;
   left: 18px;

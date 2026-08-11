@@ -471,7 +471,7 @@ async function applyDemoDefaults() {
   if ($("recipientEmail")) $("recipientEmail").value = "";
   $("senderName").value = DEMO.sender;
   if ($("senderEmail")) $("senderEmail").value = DEMO.senderEmail;
-  $("message").value = DEMO.message;
+  if ($("message")) $("message").value = "";
   setCustomerSubStep("pub");
   resetSuccessDeliveryState();
   renderChoices();
@@ -515,6 +515,11 @@ function resetProcessingSteps() {
     el?.classList.remove("done", "active");
   });
   if ($("processingTitle")) $("processingTitle").textContent = "Processing payment…";
+}
+
+function removeLegacyPaymentCollectors() {
+  document.getElementById("paymentStep")?.remove();
+  document.getElementById("paymentForm")?.remove();
 }
 
 function setPurchaseStep(step) {
@@ -1407,7 +1412,7 @@ function buildPendingOrder() {
     recipientEmail: recipientEmail || null,
     sender,
     senderEmail,
-    message: $("message").value.trim() || `A PintDrop from ${sender}`,
+    message: $("message").value.trim(),
     deliveryDate,
     fee: calculateServiceFee(selectedGift.price),
     total: calculateOrderTotal(selectedGift.price)
@@ -1425,7 +1430,7 @@ function renderReview() {
       : []),
     ["✉️", "From", pendingOrder.sender],
     ["📧", "Your email", pendingOrder.senderEmail],
-    ["💬", "Message", pendingOrder.message]
+    ...(pendingOrder.message ? [["💬", "Message", pendingOrder.message]] : [])
   ];
 
   $("reviewDetails").innerHTML = rows.map(([icon, label, value]) => `
@@ -2588,6 +2593,7 @@ if (sessionStorage.getItem("pintdrop_splash_seen")) {
 }
 
 (async function initApp() {
+  removeLegacyPaymentCollectors();
   await loadPubs();
   seedPartnerDemoData();
   await applyDemoDefaults();
