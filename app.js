@@ -1722,7 +1722,6 @@ async function createStripeCheckoutSession() {
       pubId: getCheckoutPubId(pendingOrder.pub),
       recipientName: pendingOrder.recipient,
       recipientPhone: pendingOrder.phone,
-      recipientEmail: "",
       senderName: pendingOrder.sender,
       senderEmail: pendingOrder.senderEmail,
       message: pendingOrder.message,
