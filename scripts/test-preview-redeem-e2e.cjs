@@ -30,23 +30,27 @@ async function assertRedeemPageFindsVoucher() {
     waitUntil: "networkidle"
   });
 
+  await page.waitForFunction(
+    (code) => {
+      const el = document.getElementById("voucherCode");
+      return el && el.textContent && el.textContent.toUpperCase().includes(code.toUpperCase());
+    },
+    TEST_CODE,
+    { timeout: 15000 }
+  );
+
   const configured = await page.evaluate(() => Boolean(window.PintDropSupabase?.isConfigured?.()));
   if (!configured) {
     throw new Error("PintDropSupabase is not configured on redeem page");
   }
 
-  const title = await page.locator("#voucherTitle").textContent();
-  if (/not found/i.test(title || "")) {
-    throw new Error(`Redeem page shows not found for ${TEST_CODE}`);
-  }
-
-  const emptyHidden = await page.locator("#voucherEmpty").isHidden();
-  if (!emptyHidden) {
-    throw new Error(`Voucher body not shown for ${TEST_CODE}`);
-  }
-
-  const shownCode = await page.locator("#voucherCode, #successCode, [id*='Code']").first().textContent().catch(() => "");
-  console.log("PASS: redeem page opened voucher", { code: TEST_CODE, title: title?.trim(), shownCode: shownCode?.trim() });
+  const shownCode = await page.locator("#voucherCode").textContent();
+  const gift = await page.locator("#voucherGift").textContent();
+  console.log("PASS: redeem page opened voucher", {
+    code: TEST_CODE,
+    shownCode: shownCode?.trim(),
+    gift: gift?.trim()
+  });
   await browser.close();
 }
 

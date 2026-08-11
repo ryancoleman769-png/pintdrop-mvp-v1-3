@@ -155,11 +155,6 @@ serve(async (req) => {
       Deno.env.get("TWILIO_AUTH_TOKEN")?.trim();
     const fromNumber =
       Deno.env.get("TWILIO_FROM_NUMBER")?.trim();
-    const appUrl = (
-      (payload.app_url || "").trim()
-      || Deno.env.get("PINTDROP_APP_URL")
-      || "https://pintdrop-mvp-v1-3.vercel.app"
-    ).trim();
 
     if (!accountSid || !authToken || !fromNumber) {
       return jsonResponse(
@@ -183,6 +178,11 @@ serve(async (req) => {
     }
 
     const payload = parsedBody.data;
+    const appUrl = (
+      (payload.app_url || "").trim()
+      || Deno.env.get("PINTDROP_APP_URL")
+      || "https://pintdrop-mvp-v1-3.vercel.app"
+    ).trim();
     const recipientPhone =
       normalizePhone(payload.recipient_phone || "");
     const voucherCode =
