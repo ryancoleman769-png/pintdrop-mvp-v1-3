@@ -1,21 +1,9 @@
 const {
   getVoucherByStripeSession,
   ensureCheckoutVoucher,
-  processCheckoutDeliveries,
-  needsDeliveryProcessing,
   buildFulfillmentResponse
 } = require("./_lib/fulfillment");
 const { createStripeClient, readJsonBody, getPintDropAppUrl } = require("./_lib/connect-helpers");
-
-function scheduleDelivery(sessionId, source, appUrl) {
-  void processCheckoutDeliveries(sessionId, { source, appUrl }).catch((error) => {
-    console.error("[checkout-fulfillment] Async delivery failed:", {
-      sessionId,
-      source,
-      error: error?.message || error
-    });
-  });
-}
 
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") {
@@ -39,7 +27,6 @@ module.exports = async function handler(req, res) {
     const body = await readJsonBody(req);
     const sessionId = String(body.sessionId || "").trim();
     const expectedTotal = Number(body.expectedTotal);
-    const triggerDelivery = body.triggerDelivery !== false;
     const appUrl = getPintDropAppUrl(req);
 
     if (!sessionId) {
@@ -78,22 +65,16 @@ module.exports = async function handler(req, res) {
       try {
         const result = await ensureCheckoutVoucher(session, { source: "checkout-fulfillment" });
         voucher = result.voucher;
-        if (triggerDelivery && voucher) {
-          scheduleDelivery(sessionId, "checkout-fulfillment:create", appUrl);
-        }
       } catch (error) {
         console.warn("[checkout-fulfillment] Voucher creation failed:", error);
       }
-    } else if (triggerDelivery && needsDeliveryProcessing(voucher)) {
-      fulfillmentPath = "resume_delivery";
-      scheduleDelivery(sessionId, "checkout-fulfillment:resume", appUrl);
     }
 
     const totalMs = Date.now() - requestStartedAt;
     console.log("[checkout-fulfillment-timing]", {
       sessionId,
       fulfillmentPath,
-      triggerDelivery,
+      clientSideSms: true,
       appUrl,
       stripeRetrieveMs,
       initialLookupMs,

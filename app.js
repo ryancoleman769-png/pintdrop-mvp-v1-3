@@ -115,6 +115,7 @@ let paymentProcessing = false;
 let customerSubStep = "pub";
 let activeCheckoutSessionId = null;
 let deliveryStatusPollTimer = null;
+let clientCheckoutSmsResult = null;
 let activeRedemptionVoucherId = null;
 let activeRedemptionVoucher = null;
 let redemptionJustConfirmed = false;
@@ -1490,7 +1491,8 @@ async function completeCheckoutAfterPayment(sessionId) {
   setProcessingStep(2);
 
   const pollStartedAt = performance.now();
-  const fulfillment = await pollCheckoutFulfillment(sessionId, { triggerDelivery: true });
+  clientCheckoutSmsResult = null;
+  const fulfillment = await pollCheckoutFulfillment(sessionId, { triggerDelivery: false });
   const pollMs = Math.round(performance.now() - pollStartedAt);
   console.log("[PintDrop Fulfillment] Voucher poll finished", {
     sessionId,
@@ -1509,7 +1511,16 @@ async function completeCheckoutAfterPayment(sessionId) {
   setProcessingStep(3);
   await new Promise((resolve) => setTimeout(resolve, 200));
   setProcessingStep(4);
-  showCheckoutSuccess(fulfillment.voucher, fulfillment.delivery);
+
+  const baseDelivery = {
+    sms: fulfillment.delivery?.sms === "sent" ? "sent" : "pending",
+    senderEmail: fulfillment.delivery?.senderEmail || "pending",
+    whatsapp: fulfillment.delivery?.whatsapp
+      ?? (fulfillment.voucher.whatsappOptIn === false ? "skipped" : "pending"),
+    error: fulfillment.delivery?.error || null
+  };
+
+  showCheckoutSuccess(fulfillment.voucher, baseDelivery);
   startDeliveryStatusPolling(sessionId, fulfillment.voucher);
   overlay?.classList.add("hidden");
   resetProcessingSteps();
@@ -1517,8 +1528,13 @@ async function completeCheckoutAfterPayment(sessionId) {
   paymentProcessing = false;
   if (button) button.disabled = false;
   partnerVouchers = null;
-  await renderPartner();
+  void renderPartner();
   renderSms();
+
+  if (baseDelivery.sms !== "sent") {
+    void deliverClientCheckoutSms(fulfillment.voucher, baseDelivery);
+  }
+
   clearPendingOrderStorage();
   console.log("[PintDrop Fulfillment] Success screen shown", {
     sessionId,
@@ -1612,7 +1628,10 @@ function startDeliveryStatusPolling(sessionId, voucher) {
     try {
       const result = await fetchCheckoutFulfillment(sessionId, { triggerDelivery: false });
       if (result?.delivery) {
-        updateSuccessDeliveryUI(voucher, result.delivery);
+        updateSuccessDeliveryUI(
+          voucher,
+          mergeCheckoutDeliveryWithClientSms(result.delivery)
+        );
       }
       if (isDeliverySettled(result?.delivery) || attempts >= maxAttempts) {
         stopDeliveryStatusPolling();
@@ -2004,6 +2023,44 @@ function showCheckoutSuccess(voucher, delivery) {
     senderEmail: "pending",
     whatsapp: voucher.whatsappOptIn === false ? "skipped" : "pending"
   });
+}
+
+function mergeCheckoutDeliveryWithClientSms(delivery) {
+  if (!delivery || !clientCheckoutSmsResult) return delivery;
+  return {
+    ...delivery,
+    sms: clientCheckoutSmsResult.status,
+    error: clientCheckoutSmsResult.error || delivery.error || null
+  };
+}
+
+async function deliverClientCheckoutSms(voucher, baseDelivery) {
+  if (baseDelivery?.sms === "sent") return;
+
+  try {
+    const result = await deliverVoucherSms(voucher);
+    clientCheckoutSmsResult = {
+      status: result?.ok ? "sent" : "failed",
+      error: result?.ok ? null : (result?.error || "SMS could not be sent.")
+    };
+    console.log("[PintDrop SMS] Client checkout delivery finished", {
+      ok: Boolean(result?.ok),
+      messageSid: result?.message_sid || null,
+      error: clientCheckoutSmsResult.error
+    });
+  } catch (error) {
+    clientCheckoutSmsResult = {
+      status: "failed",
+      error: error?.message || "SMS could not be sent."
+    };
+    console.warn("[PintDrop SMS] Client checkout delivery failed:", error);
+  }
+
+  updateSuccessDeliveryUI(voucher, mergeCheckoutDeliveryWithClientSms({
+    ...baseDelivery,
+    sms: clientCheckoutSmsResult.status,
+    error: clientCheckoutSmsResult.error
+  }));
 }
 
 async function deliverVoucherSms(voucher) {

@@ -509,7 +509,9 @@ async function processCheckoutDeliveries(sessionId, options = {}) {
     return voucher;
   }
 
-  voucher = await runDeliveryChannel(sessionId, voucher, "sms", (v, t) => deliverSms(v, t, appUrl), timer);
+  if (!options.skipSms) {
+    voucher = await runDeliveryChannel(sessionId, voucher, "sms", (v, t) => deliverSms(v, t, appUrl), timer);
+  }
   voucher = await runDeliveryChannel(sessionId, voucher, "sender_email", (v, t) => deliverSenderEmail(v, t, appUrl), timer);
   voucher = await runDeliveryChannel(sessionId, voucher, "whatsapp", (v, t) => deliverWhatsApp(v, t, appUrl), timer);
   voucher = await finalizeFulfillmentStatus(sessionId, voucher);

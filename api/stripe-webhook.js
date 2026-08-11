@@ -55,7 +55,11 @@ async function handler(req, res) {
         try {
           const result = await ensureCheckoutVoucher(session, { source: "stripe-webhook" });
           const appUrl = getPintDropAppUrl(req);
-          void processCheckoutDeliveries(session.id, { source: "stripe-webhook", appUrl }).catch((error) => {
+          void processCheckoutDeliveries(session.id, {
+            source: "stripe-webhook",
+            appUrl,
+            skipSms: true
+          }).catch((error) => {
             console.error("[stripe-webhook] Async delivery failed:", error);
           });
           console.log("[stripe-webhook-timing]", {
