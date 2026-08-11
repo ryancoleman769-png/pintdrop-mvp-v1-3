@@ -470,7 +470,7 @@ async function applyDemoDefaults() {
   $("recipientName").value = "";
   if ($("recipientPhoneCountry")) $("recipientPhoneCountry").value = DEMO.phoneCountry;
   $("recipientPhone").value = DEMO.phone;
-  if ($("recipientEmail")) $("recipientEmail").value = "";
+  if ($("sendWhatsApp")) $("sendWhatsApp").checked = true;
   $("senderName").value = DEMO.sender;
   if ($("senderEmail")) $("senderEmail").value = DEMO.senderEmail;
   if ($("message")) $("message").value = "";
@@ -705,13 +705,17 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 }
 
+function isWhatsAppOptInSelected() {
+  const checkbox = $("sendWhatsApp");
+  return checkbox ? checkbox.checked : true;
+}
+
 function validateOrderForm() {
   const recipient = $("recipientName").value.trim();
   const phoneRaw = $("recipientPhone").value.trim();
   const phoneCountry = getSelectedPhoneCountry();
   const sender = $("senderName").value.trim();
   const senderEmail = $("senderEmail").value.trim();
-  const recipientEmailRaw = ($("recipientEmail")?.value || "").trim();
 
   if (!recipient) {
     showStepError("orderFormError", "Please enter the recipient's name.");
@@ -731,10 +735,6 @@ function validateOrderForm() {
   }
   if (!isValidEmail(senderEmail)) {
     showStepError("orderFormError", "Please enter a valid email address.");
-    return false;
-  }
-  if (recipientEmailRaw && !isValidEmail(recipientEmailRaw)) {
-    showStepError("orderFormError", "Please enter a valid recipient email address, or leave it blank.");
     return false;
   }
   if (!validatePubStep() || !validateGiftStep()) {
@@ -1401,7 +1401,6 @@ function buildPendingOrder() {
   const phone = getNormalizedRecipientPhone();
   const sender = $("senderName").value.trim();
   const senderEmail = $("senderEmail").value.trim().toLowerCase();
-  const recipientEmail = ($("recipientEmail")?.value || "").trim().toLowerCase();
   const deliveryDate = new Date().toISOString().slice(0, 10);
 
   if (!recipient || !phone || !sender || !senderEmail) return null;
@@ -1411,7 +1410,7 @@ function buildPendingOrder() {
     gift: selectedGift,
     recipient,
     phone,
-    recipientEmail: recipientEmail || null,
+    whatsappOptIn: isWhatsAppOptInSelected(),
     sender,
     senderEmail,
     message: $("message").value.trim(),
@@ -1427,8 +1426,8 @@ function renderReview() {
     [pendingOrder.gift.icon, "Gift", pendingOrder.gift.name],
     ["📍", "Pub", `${pendingOrder.pub.name}, ${pendingOrder.pub.town}`],
     ["👤", "Recipient", `${pendingOrder.recipient} • ${formatPhoneForDisplay(pendingOrder.phone)}`],
-    ...(pendingOrder.recipientEmail
-      ? [["📧", "Recipient email", pendingOrder.recipientEmail]]
+    ...(pendingOrder.whatsappOptIn
+      ? [["💬", "WhatsApp", "Yes — same mobile number"]]
       : []),
     ["✉️", "From", pendingOrder.sender],
     ["📧", "Your email", pendingOrder.senderEmail],
@@ -1590,7 +1589,7 @@ async function pollCheckoutFulfillment(sessionId, options = {}) {
 
 function isDeliverySettled(delivery) {
   if (!delivery) return false;
-  const channels = [delivery.sms, delivery.senderEmail, delivery.recipientEmail];
+  const channels = [delivery.sms, delivery.senderEmail, delivery.whatsapp];
   return channels.every((status) => ["sent", "skipped", "failed"].includes(status));
 }
 
@@ -1732,7 +1731,7 @@ async function createStripeCheckoutSession() {
       pubId: getCheckoutPubId(pendingOrder.pub),
       recipientName: pendingOrder.recipient,
       recipientPhone: pendingOrder.phone,
-      recipientEmail: pendingOrder.recipientEmail || "",
+      whatsappOptIn: pendingOrder.whatsappOptIn !== false,
       senderName: pendingOrder.sender,
       senderEmail: pendingOrder.senderEmail,
       message: pendingOrder.message,
@@ -1896,6 +1895,10 @@ function resetSuccessDeliveryState() {
   $("successEmailWarning")?.classList.add("hidden");
   $("successEmailWarning").textContent = "";
   if ($("successSmsCheck")) $("successSmsCheck").textContent = "… SMS sending";
+  if ($("successWhatsAppCheck")) {
+    $("successWhatsAppCheck").textContent = "… WhatsApp sending";
+    $("successWhatsAppCheck").classList.remove("hidden");
+  }
   if ($("successEmailCheck")) $("successEmailCheck").textContent = "… Confirmation email sending";
 }
 
@@ -1916,8 +1919,10 @@ function updateSuccessDeliveryUI(voucher, delivery) {
   const senderEmailSkipped = delivery.senderEmail === "skipped";
   const senderEmailFailed = delivery.senderEmail === "failed";
   const senderEmailPending = delivery.senderEmail === "pending" || delivery.senderEmail === "processing";
-  const recipientEmailSent = delivery.recipientEmail === "sent";
-  const recipientEmailFailed = delivery.recipientEmail === "failed";
+  const whatsappSent = delivery.whatsapp === "sent";
+  const whatsappFailed = delivery.whatsapp === "failed";
+  const whatsappPending = delivery.whatsapp === "pending" || delivery.whatsapp === "processing";
+  const showWhatsApp = delivery.whatsapp !== "skipped";
   const allSettled = isDeliverySettled(delivery);
 
   $("successSmsCheck").textContent = formatDeliveryStatus(delivery.sms, {
@@ -1926,6 +1931,20 @@ function updateSuccessDeliveryUI(voucher, delivery) {
     failed: "⚠ SMS not delivered"
   });
 
+  if ($("successWhatsAppCheck")) {
+    if (showWhatsApp) {
+      $("successWhatsAppCheck").classList.remove("hidden");
+      $("successWhatsAppCheck").textContent = formatDeliveryStatus(delivery.whatsapp, {
+        pending: "… WhatsApp sending",
+        success: "✓ WhatsApp delivered",
+        failed: "⚠ WhatsApp not delivered",
+        skipped: "WhatsApp not requested"
+      });
+    } else {
+      $("successWhatsAppCheck").classList.add("hidden");
+    }
+  }
+
   $("successEmailCheck").textContent = formatDeliveryStatus(delivery.senderEmail, {
     pending: "… Confirmation email sending",
     success: "✓ Confirmation email sent",
@@ -1933,14 +1952,14 @@ function updateSuccessDeliveryUI(voucher, delivery) {
     skipped: "✓ Confirmation email sent"
   });
 
-  if (smsPending || senderEmailPending) {
+  if (smsPending || senderEmailPending || whatsappPending) {
     $("successMessage").textContent =
       `Payment confirmed. Your PintDrop ${voucher.code} is ready — we're sending it to ${voucher.recipient} now.`;
   } else if (smsSent) {
     let message =
       `${voucher.recipient} has just received a text message with your gift. They can redeem their ${voucher.gift.name.toLowerCase()} at ${voucher.pub.name}. 🍻`;
-    if (recipientEmailSent && voucher.recipientEmail) {
-      message += ` We also emailed a backup copy to ${voucher.recipientEmail}.`;
+    if (whatsappSent) {
+      message += " We also sent it on WhatsApp.";
     }
     $("successMessage").textContent = message;
   } else if (allSettled) {
@@ -1965,14 +1984,14 @@ function updateSuccessDeliveryUI(voucher, delivery) {
     $("successEmailWarning").classList.remove("hidden");
   }
 
-  if (voucher.recipientEmail && recipientEmailFailed) {
-    const recipientWarning =
-      `We could not send the backup email to ${voucher.recipientEmail}. The SMS is still the primary delivery method.`;
+  if (whatsappFailed && showWhatsApp) {
+    const whatsappWarning =
+      "We could not send the WhatsApp backup message. The SMS is still the primary delivery method.";
     if ($("successSmsWarning").classList.contains("hidden")) {
-      $("successSmsWarning").textContent = recipientWarning;
+      $("successSmsWarning").textContent = whatsappWarning;
       $("successSmsWarning").classList.remove("hidden");
     } else {
-      $("successSmsWarning").textContent += ` ${recipientWarning}`;
+      $("successSmsWarning").textContent += ` ${whatsappWarning}`;
     }
   }
 }
@@ -1983,7 +2002,7 @@ function showCheckoutSuccess(voucher, delivery) {
   updateSuccessDeliveryUI(voucher, delivery || {
     sms: "pending",
     senderEmail: "pending",
-    recipientEmail: voucher.recipientEmail ? "pending" : "skipped"
+    whatsapp: voucher.whatsappOptIn === false ? "skipped" : "pending"
   });
 }
 

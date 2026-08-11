@@ -51,7 +51,7 @@ function buildCheckoutMetadata(order) {
     total: String(order.total),
     recipient_name: trimMetadata(order.recipientName),
     recipient_phone: trimMetadata(order.recipientPhone, 50),
-    recipient_email: trimMetadata(order.recipientEmail),
+    whatsapp_opt_in: order.whatsappOptIn ? "true" : "false",
     sender_name: trimMetadata(order.senderName),
     sender_email: trimMetadata(order.senderEmail),
     message: trimMetadata(order.message),
@@ -78,7 +78,7 @@ function parseCheckoutMetadata(metadata = {}) {
     total: Number.isFinite(total) ? total : 0,
     recipientName: trimMetadata(metadata.recipient_name),
     recipientPhone: trimMetadata(metadata.recipient_phone, 50),
-    recipientEmail: trimMetadata(metadata.recipient_email).toLowerCase(),
+    whatsappOptIn: String(metadata.whatsapp_opt_in || "").toLowerCase() === "true",
     senderName: trimMetadata(metadata.sender_name),
     senderEmail: trimMetadata(metadata.sender_email).toLowerCase(),
     message: trimMetadata(metadata.message) || "",
@@ -141,7 +141,9 @@ function mapVoucherRow(row) {
     recipientEmailDeliveryStatus: row.recipient_email_delivery_status || "skipped",
     smsMessageSid: row.sms_message_sid || null,
     senderEmailId: row.sender_email_id || null,
-    recipientEmailId: row.recipient_email_id || null,
+    whatsappOptIn: Boolean(row.whatsapp_opt_in),
+    whatsappDeliveryStatus: row.whatsapp_delivery_status || "skipped",
+    whatsappMessageSid: row.whatsapp_message_sid || null,
     deliveryError: row.delivery_error || null
   };
 }
@@ -224,12 +226,13 @@ async function createOrGetCheckoutVoucher(sessionId, order) {
     p_total: order.total,
     p_recipient_name: order.recipientName,
     p_recipient_phone: order.recipientPhone,
-    p_recipient_email: order.recipientEmail || null,
+    p_recipient_email: null,
     p_sender_name: order.senderName,
     p_sender_email: order.senderEmail,
     p_message: order.message || `A PintDrop from ${order.senderName}`,
     p_delivery_date: order.deliveryDate,
-    p_expires_at: expiresAt
+    p_expires_at: expiresAt,
+    p_whatsapp_opt_in: Boolean(order.whatsappOptIn)
   });
 
   return mapVoucherRow(row);
@@ -261,6 +264,14 @@ function shouldSendChannel(voucher, channel) {
     if (voucher.senderEmailDeliveryStatus === "processing") return false;
     return ["pending", "failed"].includes(voucher.senderEmailDeliveryStatus);
   }
+  if (channel === "whatsapp") {
+    if (!voucher.whatsappOptIn) return false;
+    if (voucher.whatsappMessageSid) return false;
+    if (voucher.whatsappDeliveryStatus === "sent") return false;
+    if (voucher.whatsappDeliveryStatus === "skipped") return false;
+    if (voucher.whatsappDeliveryStatus === "processing") return false;
+    return ["pending", "failed"].includes(voucher.whatsappDeliveryStatus);
+  }
   if (channel === "recipient_email") {
     if (!voucher.recipientEmail) return false;
     if (voucher.recipientEmailId) return false;
@@ -277,7 +288,7 @@ function needsDeliveryProcessing(voucher) {
   return (
     shouldSendChannel(voucher, "sms")
     || shouldSendChannel(voucher, "sender_email")
-    || shouldSendChannel(voucher, "recipient_email")
+    || shouldSendChannel(voucher, "whatsapp")
   );
 }
 
@@ -339,6 +350,18 @@ async function deliverSenderEmail(voucher, timer = null, appUrl = null) {
   }, timer);
 }
 
+async function deliverWhatsApp(voucher, timer = null, appUrl = null) {
+  return invokeSupabaseFunction("send-voucher-whatsapp", {
+    recipient_phone: voucher.recipientPhone,
+    voucher_code: voucher.code,
+    sender_name: voucher.senderName,
+    recipient_name: voucher.recipientName,
+    pub_name: voucher.pubName,
+    drink_name: voucher.drinkName,
+    app_url: appUrl || getPintDropAppUrl()
+  }, timer);
+}
+
 async function deliverRecipientEmail(voucher, timer = null, appUrl = null) {
   return invokeSupabaseFunction("send-recipient-gift", {
     recipient_email: voucher.recipientEmail,
@@ -363,7 +386,7 @@ async function runDeliveryChannel(sessionId, voucher, channel, sendFn, timer = n
 
   try {
     let activeVoucher = current || voucher;
-    if (channel === "sms") {
+    if (channel === "sms" || channel === "whatsapp") {
       activeVoucher = await waitForVoucherReadableByCode(activeVoucher.code, sessionId, timer);
     }
 
@@ -402,14 +425,16 @@ async function finalizeFulfillmentStatus(sessionId, voucher) {
   const smsOk = voucher.smsDeliveryStatus === "sent";
   const senderOk = ["sent", "skipped"].includes(voucher.senderEmailDeliveryStatus);
   const recipientOk = ["sent", "skipped"].includes(voucher.recipientEmailDeliveryStatus);
+  const whatsappOk = ["sent", "skipped"].includes(voucher.whatsappDeliveryStatus);
   let fulfillmentStatus = "processing";
 
-  if (smsOk && senderOk && recipientOk) {
+  if (smsOk && senderOk && recipientOk && whatsappOk) {
     fulfillmentStatus = "completed";
   } else if (
     voucher.smsDeliveryStatus === "failed"
     || voucher.senderEmailDeliveryStatus === "failed"
     || voucher.recipientEmailDeliveryStatus === "failed"
+    || voucher.whatsappDeliveryStatus === "failed"
   ) {
     fulfillmentStatus = "partial";
   }
@@ -486,13 +511,13 @@ async function processCheckoutDeliveries(sessionId, options = {}) {
 
   voucher = await runDeliveryChannel(sessionId, voucher, "sms", (v, t) => deliverSms(v, t, appUrl), timer);
   voucher = await runDeliveryChannel(sessionId, voucher, "sender_email", (v, t) => deliverSenderEmail(v, t, appUrl), timer);
-  voucher = await runDeliveryChannel(sessionId, voucher, "recipient_email", (v, t) => deliverRecipientEmail(v, t, appUrl), timer);
+  voucher = await runDeliveryChannel(sessionId, voucher, "whatsapp", (v, t) => deliverWhatsApp(v, t, appUrl), timer);
   voucher = await finalizeFulfillmentStatus(sessionId, voucher);
   timer.mark("fulfillment:finalized", {
     fulfillmentStatus: voucher?.fulfillmentStatus || null,
     sms: voucher?.smsDeliveryStatus || null,
     senderEmail: voucher?.senderEmailDeliveryStatus || null,
-    recipientEmail: voucher?.recipientEmailDeliveryStatus || null
+    whatsapp: voucher?.whatsappDeliveryStatus || null
   });
   timer.summary();
   return voucher;
@@ -527,7 +552,7 @@ function buildFulfillmentResponse(voucher) {
       id: voucher.id,
       code: voucher.code,
       recipient: voucher.recipientName,
-      recipientEmail: voucher.recipientEmail,
+      whatsappOptIn: voucher.whatsappOptIn,
       sender: voucher.senderName,
       senderEmail: voucher.senderEmail,
       message: voucher.message,
@@ -557,7 +582,7 @@ function buildFulfillmentResponse(voucher) {
       fulfillmentStatus: voucher.fulfillmentStatus,
       sms: voucher.smsDeliveryStatus,
       senderEmail: voucher.senderEmailDeliveryStatus,
-      recipientEmail: voucher.recipientEmailDeliveryStatus,
+      whatsapp: voucher.whatsappDeliveryStatus,
       error: voucher.deliveryError
     }
   };

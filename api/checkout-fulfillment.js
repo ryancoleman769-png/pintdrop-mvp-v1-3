@@ -102,7 +102,7 @@ module.exports = async function handler(req, res) {
       fulfillmentStatus: voucher?.fulfillmentStatus || null,
       sms: voucher?.smsDeliveryStatus || null,
       senderEmail: voucher?.senderEmailDeliveryStatus || null,
-      recipientEmail: voucher?.recipientEmailDeliveryStatus || null
+      whatsapp: voucher?.whatsappDeliveryStatus || null
     });
 
     if (!voucher) {

@@ -1,0 +1,14 @@
+# PintDrop — Supabase local config (Edge Functions)
+# Secrets are set in the Supabase Dashboard, not in this file.
+
+[functions.send-voucher-sms]
+verify_jwt = true
+
+[functions.send-sender-confirmation]
+verify_jwt = true
+
+[functions.send-voucher-whatsapp]
+verify_jwt = true
+
+[functions.send-recipient-gift]
+verify_jwt = true
