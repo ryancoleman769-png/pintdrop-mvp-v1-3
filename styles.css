@@ -892,7 +892,7 @@ blockquote { margin: 18px 0; padding: 18px; border-left: 3px solid var(--green);
   .topbar { padding: 14px 16px; }
   .pintdrop-logo-text small { display: none; }
   #customer .venue-grid,
-  #customer .gift-grid { grid-template-columns: 1fr; }
+  #customer .gift-grid:not(.drink-menu-grid) { grid-template-columns: 1fr; }
 }
 .result { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; }
 .result.error { border-color: rgba(255,110,100,.65); color: #ffd1cc; }
@@ -1278,6 +1278,10 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 18px;
 }
+#customer .drink-menu-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
 #customer .gift-card {
   position: relative;
   display: flex;
@@ -1361,14 +1365,70 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   transform: scale(1.04);
 }
 #customer .drink-qty-card {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 196px;
+  padding: 16px 14px 14px;
   cursor: default;
+  overflow: visible;
+}
+#customer .drink-qty-card:hover {
+  transform: none;
+  box-shadow: none;
 }
 #customer .drink-qty-card.selected {
-  border-color: rgba(126, 255, 178, 0.55);
+  border-color: var(--green);
+  background: linear-gradient(180deg, rgba(106, 203, 69, 0.16), rgba(106, 203, 69, 0.05));
+  box-shadow: 0 0 0 1px rgba(106, 203, 69, 0.24), 0 24px 48px rgba(106, 203, 69, 0.12);
+  transform: none;
+}
+#customer .drink-qty-card:hover .gift-card-icon,
+#customer .drink-qty-card.selected .gift-card-icon {
+  transform: none;
+}
+#customer .drink-qty-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+#customer .drink-qty-card .gift-card-icon {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  font-size: 1.65rem;
+  border-radius: 14px;
+}
+#customer .drink-qty-card .gift-card-body {
+  flex: 1;
+  min-width: 0;
+  padding-right: 2px;
+}
+#customer .drink-qty-card .gift-card-body strong {
+  font-size: 0.9rem;
+  line-height: 1.25;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+#customer .drink-qty-card .gift-card-body small {
+  margin-top: 4px;
+  font-size: 0.78rem;
+}
+#customer .drink-qty-card .qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  align-self: center;
+  margin-top: auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  max-width: calc(100% - 8px);
 }
 #customer .qty-stepper {
   display: inline-flex;
@@ -1380,63 +1440,124 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   border: 1px solid var(--line);
 }
 #customer .qty-btn {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   border-radius: 50%;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
+  padding: 0;
 }
 #customer .qty-btn:hover {
   background: rgba(126, 255, 178, 0.12);
   border-color: rgba(126, 255, 178, 0.35);
 }
 #customer .qty-value {
-  min-width: 1.5rem;
+  min-width: 1.25rem;
   text-align: center;
   font-weight: 800;
+  font-size: 0.92rem;
 }
 #customer .basket-panel {
-  margin-top: 18px;
-  padding: 18px;
+  margin-top: 20px;
+  padding: 20px 18px;
   border-radius: 20px;
   border: 1px solid rgba(126, 255, 178, 0.22);
   background: rgba(126, 255, 178, 0.06);
 }
-#customer .basket-panel-head,
-#customer .basket-line-total {
+#customer .basket-panel-head {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
   align-items: center;
+  margin-bottom: 14px;
 }
-#customer .basket-panel-head {
-  margin-bottom: 12px;
+#customer .basket-panel-head strong {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
 }
 #customer .basket-line-list {
   list-style: none;
-  margin: 0 0 12px;
+  margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 #customer .basket-line-item {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 14px;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+#customer .basket-line-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+#customer .basket-line-amount,
+#customer .basket-total-amount {
+  flex: 0 0 auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+#customer .basket-summary-divider {
+  margin: 14px 0 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+#customer .basket-totals {
+  display: grid;
+  gap: 8px;
+}
+#customer .basket-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+#customer .basket-total-row span:first-child {
+  text-align: left;
+}
+#customer .basket-total-row--grand {
+  margin-top: 4px;
+  font-size: 1rem;
+}
+#customer .basket-total-row--grand > span:first-child {
+  font-weight: 700;
+}
+#customer .basket-total-row--grand .basket-total-amount {
+  color: var(--green);
+  font-size: 1.2rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+#customer .basket-total-amount-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+#customer .basket-total-amount-wrap small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 #customer .bar-tab-divider {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 22px 0 16px;
+  margin: 24px 0 16px;
   color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 #customer .bar-tab-divider::before,
@@ -1451,6 +1572,19 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 }
 #customer .bar-tab-card {
   width: 100%;
+}
+@media (max-width: 1100px) {
+  #customer .drink-menu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  #customer .drink-menu-grid {
+    grid-template-columns: 1fr;
+  }
+  #customer .drink-qty-card {
+    min-height: 0;
+  }
 }
 #customer .field-grid,
 #customer .payment-row {
@@ -1776,7 +1910,7 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
     left: calc(6.6rem + 10px);
   }
   #customer .venue-grid,
-  #customer .gift-grid {
+  #customer .gift-grid:not(.drink-menu-grid) {
     grid-template-columns: 1fr;
   }
   #customer .flow-heading {

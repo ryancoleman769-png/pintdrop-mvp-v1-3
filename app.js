@@ -895,10 +895,12 @@ function renderChoices() {
     const selected = orderMode === "drinks" && quantity > 0;
     return `
     <div class="gift-card drink-qty-card ${selected ? "selected" : ""}" data-gift="${gift.id}">
-      <span class="gift-card-icon">${gift.icon}</span>
-      <div class="gift-card-body">
-        <strong>${gift.name}</strong>
-        <small>${money(gift.price)} each</small>
+      <div class="drink-qty-card-top">
+        <span class="gift-card-icon">${gift.icon}</span>
+        <div class="gift-card-body">
+          <strong>${gift.name}</strong>
+          <small>${money(gift.price)} each</small>
+        </div>
       </div>
       <div class="qty-stepper" role="group" aria-label="${gift.name} quantity">
         <button type="button" class="qty-btn" data-qty-action="decrease" data-gift="${gift.id}" aria-label="Decrease ${gift.name}">−</button>
@@ -933,19 +935,32 @@ function renderChoices() {
       basketPanel.innerHTML = `
         <div class="basket-panel-head">
           <strong>Your order</strong>
-          <span>${money(totals.total)} incl. fee</span>
         </div>
         <ul class="basket-line-list">
           ${lineItems.map(item => `
             <li class="basket-line-item">
-              <span>${item.quantity}× ${item.name}</span>
-              <span>${money(item.lineSubtotal)}</span>
+              <span class="basket-line-label">${item.quantity} × ${item.name}</span>
+              <span class="basket-line-amount">${money(item.lineSubtotal)}</span>
             </li>
           `).join("")}
         </ul>
-        <div class="basket-line-total">
-          <span>Pub value</span>
-          <strong>${money(totals.pubValue)}</strong>
+        <div class="basket-summary-divider" aria-hidden="true"></div>
+        <div class="basket-totals">
+          <div class="basket-total-row">
+            <span>Pub value</span>
+            <span class="basket-total-amount">${money(totals.pubValue)}</span>
+          </div>
+          <div class="basket-total-row">
+            <span>Service fee (15%)</span>
+            <span class="basket-total-amount">${money(totals.fee)}</span>
+          </div>
+          <div class="basket-total-row basket-total-row--grand">
+            <span>Total</span>
+            <span class="basket-total-amount-wrap">
+              <strong class="basket-total-amount">${money(totals.total)}</strong>
+              <small>incl. fee</small>
+            </span>
+          </div>
         </div>
       `;
     }
