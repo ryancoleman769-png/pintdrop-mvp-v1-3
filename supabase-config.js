@@ -108,11 +108,12 @@ window.PintDropSupabase.mapPubRow = mapSupabasePubRow;
 // ===== Drinks / menu (Supabase) =====
 
 function mapSupabaseDrinkRow(row) {
+  const menuPrice = row.slug === "tab" ? 20 : Number(row.price);
   return {
     id: row.slug,
     supabaseId: row.id,
     name: row.name,
-    price: Number(row.price),
+    price: menuPrice,
     icon: row.icon || "🍺",
     source: "supabase"
   };
