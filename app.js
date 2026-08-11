@@ -101,12 +101,12 @@ const LOGO = {
   full: "images/pintdrop-logo.png"
 };
 const DEMO = {
-  sender: "Ryan",
-  senderEmail: "ryan@example.com",
-  recipient: "Dad",
+  sender: "",
+  senderEmail: "",
+  recipient: "",
   phone: "087 123 4567",
   phoneCountry: "IE",
-  message: "Happy birthday Dad — have one on me 🍻"
+  message: ""
 };
 let selectedPub = pubs[0];
 let selectedGift = gifts[0];
