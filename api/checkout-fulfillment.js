@@ -39,7 +39,7 @@ module.exports = async function handler(req, res) {
     const body = await readJsonBody(req);
     const sessionId = String(body.sessionId || "").trim();
     const expectedTotal = Number(body.expectedTotal);
-    const triggerDelivery = body.triggerDelivery === true;
+    const triggerDelivery = body.triggerDelivery !== false;
     const appUrl = getPintDropAppUrl(req);
 
     if (!sessionId) {
