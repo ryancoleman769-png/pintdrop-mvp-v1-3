@@ -1,4 +1,4 @@
-const { getSupabaseUrl, getSupabaseServiceRoleKey, supabaseRpc } = require("./connect-helpers");
+const { getSupabaseUrl, getSupabaseServiceRoleKey, supabaseRpc, getPintDropAppUrl } = require("./connect-helpers");
 
 const METADATA_MAX_LENGTH = 500;
 
@@ -281,18 +281,52 @@ function needsDeliveryProcessing(voucher) {
   );
 }
 
-async function deliverSms(voucher, timer = null) {
+async function getVoucherByCode(code) {
+  const row = await supabaseRpc("get_voucher_by_code", {
+    p_code: String(code || "").trim()
+  });
+  return mapVoucherRow(row);
+}
+
+async function waitForVoucherReadableByCode(code, sessionId, timer = null, maxAttempts = 8) {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) {
+    throw new Error("Voucher code is required for read-back verification.");
+  }
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const voucher = await getVoucherByCode(normalizedCode);
+    if (
+      voucher?.code
+      && voucher.code.toUpperCase() === normalizedCode
+      && (!sessionId || voucher.stripeCheckoutSessionId === sessionId)
+    ) {
+      timer?.mark("voucher:readback_ok", {
+        attempt: attempt + 1,
+        voucherCode: voucher.code
+      });
+      return voucher;
+    }
+    timer?.mark("voucher:readback_retry", { attempt: attempt + 1 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+
+  throw new Error(`Voucher ${normalizedCode} is not readable via get_voucher_by_code yet.`);
+}
+
+async function deliverSms(voucher, timer = null, appUrl = null) {
   return invokeSupabaseFunction("send-voucher-sms", {
     recipient_phone: voucher.recipientPhone,
     voucher_code: voucher.code,
     sender_name: voucher.senderName,
     recipient_name: voucher.recipientName,
     pub_name: voucher.pubName,
-    drink_name: voucher.drinkName
+    drink_name: voucher.drinkName,
+    app_url: appUrl || getPintDropAppUrl()
   }, timer);
 }
 
-async function deliverSenderEmail(voucher, timer = null) {
+async function deliverSenderEmail(voucher, timer = null, appUrl = null) {
   return invokeSupabaseFunction("send-sender-confirmation", {
     sender_email: voucher.senderEmail,
     sender_name: voucher.senderName,
@@ -300,11 +334,12 @@ async function deliverSenderEmail(voucher, timer = null) {
     pub_name: voucher.pubName,
     drink_name: voucher.drinkName,
     message: voucher.message,
-    voucher_code: voucher.code
+    voucher_code: voucher.code,
+    app_url: appUrl || getPintDropAppUrl()
   }, timer);
 }
 
-async function deliverRecipientEmail(voucher, timer = null) {
+async function deliverRecipientEmail(voucher, timer = null, appUrl = null) {
   return invokeSupabaseFunction("send-recipient-gift", {
     recipient_email: voucher.recipientEmail,
     sender_name: voucher.senderName,
@@ -312,7 +347,8 @@ async function deliverRecipientEmail(voucher, timer = null) {
     pub_name: voucher.pubName,
     drink_name: voucher.drinkName,
     message: voucher.message,
-    voucher_code: voucher.code
+    voucher_code: voucher.code,
+    app_url: appUrl || getPintDropAppUrl()
   }, timer);
 }
 
@@ -326,8 +362,13 @@ async function runDeliveryChannel(sessionId, voucher, channel, sendFn, timer = n
   await updateDeliveryStatus(sessionId, channel, "processing");
 
   try {
+    let activeVoucher = current || voucher;
+    if (channel === "sms") {
+      activeVoucher = await waitForVoucherReadableByCode(activeVoucher.code, sessionId, timer);
+    }
+
     const channelStartedAt = Date.now();
-    const result = await sendFn(voucher, timer);
+    const result = await sendFn(activeVoucher, timer);
     timer?.mark(`${channel}:finished`, {
       channelMs: Date.now() - channelStartedAt,
       ok: Boolean(result?.ok),
@@ -423,6 +464,7 @@ async function ensureCheckoutVoucher(session, options = {}) {
 
 async function processCheckoutDeliveries(sessionId, options = {}) {
   const timer = createFulfillmentTimer(sessionId, options.source || "delivery");
+  const appUrl = options.appUrl || getPintDropAppUrl();
   let voucher = await getVoucherByStripeSession(sessionId);
   if (!voucher) {
     timer.mark("delivery:skipped", { reason: "voucher_missing" });
@@ -442,9 +484,9 @@ async function processCheckoutDeliveries(sessionId, options = {}) {
     return voucher;
   }
 
-  voucher = await runDeliveryChannel(sessionId, voucher, "sms", deliverSms, timer);
-  voucher = await runDeliveryChannel(sessionId, voucher, "sender_email", deliverSenderEmail, timer);
-  voucher = await runDeliveryChannel(sessionId, voucher, "recipient_email", deliverRecipientEmail, timer);
+  voucher = await runDeliveryChannel(sessionId, voucher, "sms", (v, t) => deliverSms(v, t, appUrl), timer);
+  voucher = await runDeliveryChannel(sessionId, voucher, "sender_email", (v, t) => deliverSenderEmail(v, t, appUrl), timer);
+  voucher = await runDeliveryChannel(sessionId, voucher, "recipient_email", (v, t) => deliverRecipientEmail(v, t, appUrl), timer);
   voucher = await finalizeFulfillmentStatus(sessionId, voucher);
   timer.mark("fulfillment:finalized", {
     fulfillmentStatus: voucher?.fulfillmentStatus || null,
@@ -528,6 +570,8 @@ module.exports = {
   generateVoucherCode,
   mapVoucherRow,
   getVoucherByStripeSession,
+  getVoucherByCode,
+  waitForVoucherReadableByCode,
   ensureCheckoutVoucher,
   processCheckoutDeliveries,
   needsDeliveryProcessing,

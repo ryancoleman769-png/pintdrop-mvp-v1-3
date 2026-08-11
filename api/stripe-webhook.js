@@ -1,8 +1,4 @@
-const {
-  createStripeClient,
-  readRawBody,
-  syncStripeAccountToSupabase
-} = require("./_lib/connect-helpers");
+const { createStripeClient, readRawBody, syncStripeAccountToSupabase, getPintDropAppUrl } = require("./_lib/connect-helpers");
 const { ensureCheckoutVoucher, processCheckoutDeliveries } = require("./_lib/fulfillment");
 const Stripe = require("stripe");
 
@@ -58,7 +54,8 @@ async function handler(req, res) {
       if (session.payment_status === "paid") {
         try {
           const result = await ensureCheckoutVoucher(session, { source: "stripe-webhook" });
-          void processCheckoutDeliveries(session.id, { source: "stripe-webhook" }).catch((error) => {
+          const appUrl = getPintDropAppUrl(req);
+          void processCheckoutDeliveries(session.id, { source: "stripe-webhook", appUrl }).catch((error) => {
             console.error("[stripe-webhook] Async delivery failed:", error);
           });
           console.log("[stripe-webhook-timing]", {
