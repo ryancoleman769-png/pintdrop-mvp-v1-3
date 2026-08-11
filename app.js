@@ -1508,9 +1508,6 @@ async function completeCheckoutAfterPayment(sessionId) {
   }
 
   syncFulfilledVoucherToLocal(fulfillment.voucher);
-  setProcessingStep(3);
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  setProcessingStep(4);
 
   const baseDelivery = {
     sms: fulfillment.delivery?.sms === "sent" ? "sent" : "pending",
@@ -1520,7 +1517,11 @@ async function completeCheckoutAfterPayment(sessionId) {
     error: fulfillment.delivery?.error || null
   };
 
-  showCheckoutSuccess(fulfillment.voucher, baseDelivery);
+  setProcessingStep(3);
+  const delivery = await deliverClientCheckoutSms(fulfillment.voucher, baseDelivery);
+  setProcessingStep(4);
+
+  showCheckoutSuccess(fulfillment.voucher, delivery);
   startDeliveryStatusPolling(sessionId, fulfillment.voucher);
   overlay?.classList.add("hidden");
   resetProcessingSteps();
@@ -1530,11 +1531,6 @@ async function completeCheckoutAfterPayment(sessionId) {
   partnerVouchers = null;
   void renderPartner();
   renderSms();
-
-  if (baseDelivery.sms !== "sent") {
-    void deliverClientCheckoutSms(fulfillment.voucher, baseDelivery);
-  }
-
   clearPendingOrderStorage();
   console.log("[PintDrop Fulfillment] Success screen shown", {
     sessionId,
@@ -2035,32 +2031,35 @@ function mergeCheckoutDeliveryWithClientSms(delivery) {
 }
 
 async function deliverClientCheckoutSms(voucher, baseDelivery) {
-  if (baseDelivery?.sms === "sent") return;
+  const delivery = { ...baseDelivery };
+  if (delivery.sms === "sent") {
+    return delivery;
+  }
 
   try {
     const result = await deliverVoucherSms(voucher);
+    delivery.sms = result?.ok ? "sent" : "failed";
+    delivery.error = result?.ok ? null : (result?.error || "SMS could not be sent.");
     clientCheckoutSmsResult = {
-      status: result?.ok ? "sent" : "failed",
-      error: result?.ok ? null : (result?.error || "SMS could not be sent.")
+      status: delivery.sms,
+      error: delivery.error
     };
     console.log("[PintDrop SMS] Client checkout delivery finished", {
       ok: Boolean(result?.ok),
       messageSid: result?.message_sid || null,
-      error: clientCheckoutSmsResult.error
+      error: delivery.error
     });
   } catch (error) {
+    delivery.sms = "failed";
+    delivery.error = error?.message || "SMS could not be sent.";
     clientCheckoutSmsResult = {
-      status: "failed",
-      error: error?.message || "SMS could not be sent."
+      status: delivery.sms,
+      error: delivery.error
     };
     console.warn("[PintDrop SMS] Client checkout delivery failed:", error);
   }
 
-  updateSuccessDeliveryUI(voucher, mergeCheckoutDeliveryWithClientSms({
-    ...baseDelivery,
-    sms: clientCheckoutSmsResult.status,
-    error: clientCheckoutSmsResult.error
-  }));
+  return delivery;
 }
 
 async function deliverVoucherSms(voucher) {
