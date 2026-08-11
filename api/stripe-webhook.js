@@ -3,7 +3,7 @@ const {
   readRawBody,
   syncStripeAccountToSupabase
 } = require("./_lib/connect-helpers");
-const { fulfillCheckoutSession } = require("./_lib/fulfillment");
+const { ensureCheckoutVoucher, processCheckoutDeliveries } = require("./_lib/fulfillment");
 const Stripe = require("stripe");
 
 async function handler(req, res) {
@@ -48,10 +48,27 @@ async function handler(req, res) {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
+      const webhookReceivedAt = Date.now();
+      console.log("[stripe-webhook-timing]", {
+        stage: "checkout.session.completed:received",
+        sessionId: session.id,
+        paymentStatus: session.payment_status,
+        receivedAt: new Date(webhookReceivedAt).toISOString()
+      });
       if (session.payment_status === "paid") {
         try {
-          const result = await fulfillCheckoutSession(session);
-          console.log("[stripe-webhook] Checkout fulfilled:", {
+          const result = await ensureCheckoutVoucher(session, { source: "stripe-webhook" });
+          void processCheckoutDeliveries(session.id, { source: "stripe-webhook" }).catch((error) => {
+            console.error("[stripe-webhook] Async delivery failed:", error);
+          });
+          console.log("[stripe-webhook-timing]", {
+            stage: "checkout.session.completed:voucher_ready",
+            sessionId: session.id,
+            totalMs: Date.now() - webhookReceivedAt,
+            voucherCode: result?.voucher?.code,
+            fulfillmentStatus: result?.voucher?.fulfillmentStatus
+          });
+          console.log("[stripe-webhook] Checkout voucher ready:", {
             sessionId: session.id,
             voucherCode: result?.voucher?.code,
             fulfillmentStatus: result?.voucher?.fulfillmentStatus

@@ -113,6 +113,8 @@ let selectedGift = gifts[0];
 let pendingOrder = null;
 let paymentProcessing = false;
 let customerSubStep = "pub";
+let activeCheckoutSessionId = null;
+let deliveryStatusPollTimer = null;
 let activeRedemptionVoucherId = null;
 let activeRedemptionVoucher = null;
 let redemptionJustConfirmed = false;
@@ -1480,12 +1482,23 @@ async function completeCheckoutAfterPayment(sessionId) {
   resetProcessingSteps();
   overlay?.classList.remove("hidden");
 
+  const checkoutReturnStartedAt = performance.now();
+  activeCheckoutSessionId = sessionId;
+  console.log("[PintDrop Fulfillment] Return from Stripe", { sessionId });
+
   setProcessingStep(1);
-  await new Promise((resolve) => setTimeout(resolve, 400));
+  await new Promise((resolve) => setTimeout(resolve, 250));
   setProcessingStep(2);
 
-  const fulfillment = await pollCheckoutFulfillment(sessionId);
-  setProcessingStep(3);
+  const pollStartedAt = performance.now();
+  const fulfillment = await pollCheckoutFulfillment(sessionId, { triggerDelivery: true });
+  const pollMs = Math.round(performance.now() - pollStartedAt);
+  console.log("[PintDrop Fulfillment] Voucher poll finished", {
+    sessionId,
+    pollMs,
+    hasVoucher: Boolean(fulfillment?.voucher),
+    status: fulfillment?.status || fulfillment?.delivery?.fulfillmentStatus || null
+  });
 
   if (!fulfillment?.voucher) {
     throw new Error(
@@ -1494,9 +1507,11 @@ async function completeCheckoutAfterPayment(sessionId) {
   }
 
   syncFulfilledVoucherToLocal(fulfillment.voucher);
-  await new Promise((resolve) => setTimeout(resolve, 400));
+  setProcessingStep(3);
+  await new Promise((resolve) => setTimeout(resolve, 200));
   setProcessingStep(4);
   showCheckoutSuccess(fulfillment.voucher, fulfillment.delivery);
+  startDeliveryStatusPolling(sessionId, fulfillment.voucher);
   overlay?.classList.add("hidden");
   resetProcessingSteps();
   setPurchaseStep("success");
@@ -1506,15 +1521,23 @@ async function completeCheckoutAfterPayment(sessionId) {
   await renderPartner();
   renderSms();
   clearPendingOrderStorage();
+  console.log("[PintDrop Fulfillment] Success screen shown", {
+    sessionId,
+    totalMs: Math.round(performance.now() - checkoutReturnStartedAt),
+    voucherCode: fulfillment?.voucher?.code || null
+  });
 }
 
-async function fetchCheckoutFulfillment(sessionId) {
+async function fetchCheckoutFulfillment(sessionId, options = {}) {
+  const { triggerDelivery = false } = options;
+  const startedAt = performance.now();
   const response = await fetch("/api/checkout-fulfillment", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       sessionId,
-      expectedTotal: pendingOrder?.total
+      expectedTotal: pendingOrder?.total,
+      triggerDelivery
     })
   });
 
@@ -1529,27 +1552,79 @@ async function fetchCheckoutFulfillment(sessionId) {
     throw new Error(data?.error || "Could not load checkout fulfillment.");
   }
 
+  console.log("[PintDrop Fulfillment] Poll response", {
+    sessionId,
+    triggerDelivery,
+    requestMs: Math.round(performance.now() - startedAt),
+    status: data?.status || data?.delivery?.fulfillmentStatus || null,
+    hasVoucher: Boolean(data?.voucher),
+    sms: data?.delivery?.sms || null
+  });
+
   return data;
 }
 
-async function pollCheckoutFulfillment(sessionId) {
-  const maxAttempts = 30;
-  const delayMs = 1500;
+async function pollCheckoutFulfillment(sessionId, options = {}) {
+  const { triggerDelivery = true } = options;
+  const maxAttempts = 20;
+  const delayMs = 800;
   let lastResult = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    lastResult = await fetchCheckoutFulfillment(sessionId);
-    const status = lastResult?.status || lastResult?.delivery?.fulfillmentStatus;
-    if (lastResult?.voucher && (status === "completed" || status === "partial")) {
-      return lastResult;
-    }
-    if (lastResult?.voucher && attempt >= maxAttempts - 1) {
+    lastResult = await fetchCheckoutFulfillment(sessionId, {
+      triggerDelivery: attempt === 0 ? triggerDelivery : false
+    });
+    console.log("[PintDrop Fulfillment] Voucher poll attempt", {
+      sessionId,
+      attempt: attempt + 1,
+      hasVoucher: Boolean(lastResult?.voucher)
+    });
+    if (lastResult?.voucher) {
       return lastResult;
     }
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
   return lastResult;
+}
+
+function isDeliverySettled(delivery) {
+  if (!delivery) return false;
+  const channels = [delivery.sms, delivery.senderEmail, delivery.recipientEmail];
+  return channels.every((status) => ["sent", "skipped", "failed"].includes(status));
+}
+
+function stopDeliveryStatusPolling() {
+  if (deliveryStatusPollTimer) {
+    clearInterval(deliveryStatusPollTimer);
+    deliveryStatusPollTimer = null;
+  }
+}
+
+function startDeliveryStatusPolling(sessionId, voucher) {
+  stopDeliveryStatusPolling();
+  if (!sessionId || !voucher?.code) return;
+
+  let attempts = 0;
+  const maxAttempts = 30;
+
+  deliveryStatusPollTimer = setInterval(async () => {
+    attempts += 1;
+    try {
+      const result = await fetchCheckoutFulfillment(sessionId, { triggerDelivery: false });
+      if (result?.delivery) {
+        updateSuccessDeliveryUI(voucher, result.delivery);
+      }
+      if (isDeliverySettled(result?.delivery) || attempts >= maxAttempts) {
+        stopDeliveryStatusPolling();
+      }
+    } catch (error) {
+      console.warn("[PintDrop Fulfillment] Delivery status poll failed:", error);
+      if (attempts >= maxAttempts) {
+        stopDeliveryStatusPolling();
+      }
+    }
+  }, 2000);
 }
 
 function syncFulfilledVoucherToLocal(voucher) {
@@ -1820,8 +1895,96 @@ function resetSuccessDeliveryState() {
   $("successSmsWarning").textContent = "";
   $("successEmailWarning")?.classList.add("hidden");
   $("successEmailWarning").textContent = "";
-  if ($("successSmsCheck")) $("successSmsCheck").textContent = "✓ SMS delivered";
-  if ($("successEmailCheck")) $("successEmailCheck").textContent = "✓ Confirmation email sent";
+  if ($("successSmsCheck")) $("successSmsCheck").textContent = "… SMS sending";
+  if ($("successEmailCheck")) $("successEmailCheck").textContent = "… Confirmation email sending";
+}
+
+function formatDeliveryStatus(status, { pending, success, failed, skipped }) {
+  if (status === "sent") return success;
+  if (status === "skipped") return skipped || success;
+  if (status === "failed") return failed;
+  return pending;
+}
+
+function updateSuccessDeliveryUI(voucher, delivery) {
+  if (!voucher || !delivery) return;
+
+  const smsSent = delivery.sms === "sent";
+  const smsFailed = delivery.sms === "failed";
+  const smsPending = delivery.sms === "pending" || delivery.sms === "processing";
+  const senderEmailSent = delivery.senderEmail === "sent";
+  const senderEmailSkipped = delivery.senderEmail === "skipped";
+  const senderEmailFailed = delivery.senderEmail === "failed";
+  const senderEmailPending = delivery.senderEmail === "pending" || delivery.senderEmail === "processing";
+  const recipientEmailSent = delivery.recipientEmail === "sent";
+  const recipientEmailFailed = delivery.recipientEmail === "failed";
+  const allSettled = isDeliverySettled(delivery);
+
+  $("successSmsCheck").textContent = formatDeliveryStatus(delivery.sms, {
+    pending: "… SMS sending",
+    success: "✓ SMS delivered",
+    failed: "⚠ SMS not delivered"
+  });
+
+  $("successEmailCheck").textContent = formatDeliveryStatus(delivery.senderEmail, {
+    pending: "… Confirmation email sending",
+    success: "✓ Confirmation email sent",
+    failed: "⚠ Email not sent",
+    skipped: "✓ Confirmation email sent"
+  });
+
+  if (smsPending || senderEmailPending) {
+    $("successMessage").textContent =
+      `Payment confirmed. Your PintDrop ${voucher.code} is ready — we're sending it to ${voucher.recipient} now.`;
+  } else if (smsSent) {
+    let message =
+      `${voucher.recipient} has just received a text message with your gift. They can redeem their ${voucher.gift.name.toLowerCase()} at ${voucher.pub.name}. 🍻`;
+    if (recipientEmailSent && voucher.recipientEmail) {
+      message += ` We also emailed a backup copy to ${voucher.recipientEmail}.`;
+    }
+    $("successMessage").textContent = message;
+  } else if (allSettled) {
+    $("successMessage").textContent =
+      `Your PintDrop ${voucher.code} was created successfully for ${voucher.recipient} at ${voucher.pub.name}.`;
+  }
+
+  $("successSmsWarning").classList.add("hidden");
+  $("successSmsWarning").textContent = "";
+  $("successEmailWarning").classList.add("hidden");
+  $("successEmailWarning").textContent = "";
+
+  if (smsFailed) {
+    $("successSmsWarning").textContent =
+      `The voucher was saved, but the SMS could not be sent${delivery.error ? `: ${delivery.error}` : ""}. Please share the voucher code or link with the recipient manually.`;
+    $("successSmsWarning").classList.remove("hidden");
+  }
+
+  if (senderEmailFailed && !senderEmailSkipped) {
+    $("successEmailWarning").textContent =
+      `Your PintDrop was created, but we could not send your confirmation email${delivery.error ? `: ${delivery.error}` : ""}. Your receipt is still shown below.`;
+    $("successEmailWarning").classList.remove("hidden");
+  }
+
+  if (voucher.recipientEmail && recipientEmailFailed) {
+    const recipientWarning =
+      `We could not send the backup email to ${voucher.recipientEmail}. The SMS is still the primary delivery method.`;
+    if ($("successSmsWarning").classList.contains("hidden")) {
+      $("successSmsWarning").textContent = recipientWarning;
+      $("successSmsWarning").classList.remove("hidden");
+    } else {
+      $("successSmsWarning").textContent += ` ${recipientWarning}`;
+    }
+  }
+}
+
+function showCheckoutSuccess(voucher, delivery) {
+  resetSuccessDeliveryState();
+  $("successCode").textContent = voucher.code;
+  updateSuccessDeliveryUI(voucher, delivery || {
+    sms: "pending",
+    senderEmail: "pending",
+    recipientEmail: voucher.recipientEmail ? "pending" : "skipped"
+  });
 }
 
 async function deliverVoucherSms(voucher) {
@@ -1874,59 +2037,6 @@ async function deliverSenderConfirmationEmail(voucher) {
   );
 }
 
-function showCheckoutSuccess(voucher, delivery) {
-  resetSuccessDeliveryState();
-  $("successCode").textContent = voucher.code;
-
-  const fulfillmentStatus = delivery?.fulfillmentStatus || "processing";
-  const smsSent = delivery?.sms === "sent";
-  const senderEmailSent = delivery?.senderEmail === "sent";
-  const senderEmailSkipped = delivery?.senderEmail === "skipped";
-  const recipientEmailSent = delivery?.recipientEmail === "sent";
-  const stillProcessing = fulfillmentStatus === "processing" || fulfillmentStatus === "pending";
-
-  if (stillProcessing) {
-    $("successMessage").textContent =
-      `Payment confirmed. We're still sending your PintDrop to ${voucher.recipient} — this usually takes a few seconds.`;
-    $("successSmsCheck").textContent = "… SMS sending";
-    $("successEmailCheck").textContent = "… Confirmation email sending";
-    return;
-  }
-
-  if (smsSent) {
-    let message =
-      `${voucher.recipient} has just received a text message with your gift. They can redeem their ${voucher.gift.name.toLowerCase()} at ${voucher.pub.name}. 🍻`;
-    if (recipientEmailSent && voucher.recipientEmail) {
-      message += ` We also emailed a backup copy to ${voucher.recipientEmail}.`;
-    }
-    $("successMessage").textContent = message;
-  } else {
-    $("successMessage").textContent =
-      `Your PintDrop was created successfully for ${voucher.recipient} at ${voucher.pub.name}.`;
-    $("successSmsCheck").textContent = "⚠ SMS not delivered";
-    $("successSmsWarning").textContent =
-      `The voucher was saved, but the SMS could not be sent${delivery?.error ? `: ${delivery.error}` : ""}. Please share the voucher code or link with the recipient manually.`;
-    $("successSmsWarning").classList.remove("hidden");
-  }
-
-  if (!senderEmailSent && !senderEmailSkipped && delivery?.senderEmail === "failed") {
-    $("successEmailCheck").textContent = "⚠ Email not sent";
-    $("successEmailWarning").textContent =
-      `Your PintDrop was created, but we could not send your confirmation email${delivery?.error ? `: ${delivery.error}` : ""}. Your receipt is still shown below.`;
-    $("successEmailWarning").classList.remove("hidden");
-  }
-
-  if (voucher.recipientEmail && delivery?.recipientEmail === "failed") {
-    const existingWarning = $("successSmsWarning").textContent.trim();
-    const recipientWarning =
-      `We could not send the backup email to ${voucher.recipientEmail}. The SMS is still the primary delivery method.`;
-    $("successSmsWarning").textContent = existingWarning
-      ? `${existingWarning} ${recipientWarning}`
-      : recipientWarning;
-    $("successSmsWarning").classList.remove("hidden");
-  }
-}
-
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => switchView(btn.dataset.view));
 });
@@ -1968,6 +2078,8 @@ $("goToPayment").addEventListener("click", () => {
 
 $("viewVoucher").addEventListener("click", () => switchView("sms"));
 $("sendAnother").addEventListener("click", async () => {
+  stopDeliveryStatusPolling();
+  activeCheckoutSessionId = null;
   await applyDemoDefaults();
   pendingOrder = null;
   clearPendingOrderStorage();
@@ -2537,6 +2649,8 @@ window.addEventListener("hashchange", async () => {
 });
 
 async function resetDemoState() {
+  stopDeliveryStatusPolling();
+  activeCheckoutSessionId = null;
   localStorage.removeItem("pintdrop_vouchers");
   localStorage.removeItem("pintdrop_last_voucher");
   localStorage.removeItem(PARTNER_DEMO_SEED_KEY);

@@ -2,6 +2,34 @@ const { getSupabaseUrl, getSupabaseServiceRoleKey, supabaseRpc } = require("./co
 
 const METADATA_MAX_LENGTH = 500;
 
+function createFulfillmentTimer(sessionId, source) {
+  const startedAt = Date.now();
+  const marks = [];
+  return {
+    mark(stage, extra = {}) {
+      const elapsedMs = Date.now() - startedAt;
+      marks.push({ stage, elapsedMs, ...extra });
+      console.log("[fulfillment-timing]", {
+        source,
+        sessionId,
+        stage,
+        elapsedMs,
+        ...extra
+      });
+    },
+    summary() {
+      const totalMs = Date.now() - startedAt;
+      console.log("[fulfillment-timing-summary]", {
+        source,
+        sessionId,
+        totalMs,
+        stages: marks
+      });
+      return { totalMs, stages: marks };
+    }
+  };
+}
+
 function trimMetadata(value, maxLength = METADATA_MAX_LENGTH) {
   return String(value || "").trim().slice(0, maxLength);
 }
@@ -125,11 +153,14 @@ async function getVoucherByStripeSession(sessionId) {
   return mapVoucherRow(row);
 }
 
-async function invokeSupabaseFunction(functionName, body) {
+async function invokeSupabaseFunction(functionName, body, timer = null) {
   const serviceRoleKey = getSupabaseServiceRoleKey();
   if (!serviceRoleKey) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured.");
   }
+
+  const invokeStartedAt = Date.now();
+  timer?.mark(`${functionName}:start`);
 
   const response = await fetch(`${getSupabaseUrl()}/functions/v1/${functionName}`, {
     method: "POST",
@@ -151,20 +182,24 @@ async function invokeSupabaseFunction(functionName, body) {
     }
   }
 
+  const invokeMs = Date.now() - invokeStartedAt;
+  timer?.mark(`${functionName}:complete`, { invokeMs, httpStatus: response.status, ok: Boolean(data?.ok) });
+
   if (!response.ok) {
     const message = data?.error || data?.details || text || `${functionName} failed.`;
-    return { ok: false, error: message, details: data?.details || data };
+    return { ok: false, error: message, details: data?.details || data, invokeMs };
   }
 
   if (!data?.ok) {
     return {
       ok: false,
       error: data?.error || data?.details || `${functionName} failed.`,
-      details: data?.details || data
+      details: data?.details || data,
+      invokeMs
     };
   }
 
-  return data;
+  return { ...data, invokeMs };
 }
 
 async function createOrGetCheckoutVoucher(sessionId, order) {
@@ -215,21 +250,38 @@ function shouldSendChannel(voucher, channel) {
   if (!voucher) return false;
   if (channel === "sms") {
     if (voucher.smsMessageSid) return false;
-    return ["pending", "processing", "failed"].includes(voucher.smsDeliveryStatus);
+    if (voucher.smsDeliveryStatus === "sent") return false;
+    if (voucher.smsDeliveryStatus === "processing") return false;
+    return ["pending", "failed"].includes(voucher.smsDeliveryStatus);
   }
   if (channel === "sender_email") {
     if (voucher.senderEmailId) return false;
-    return ["pending", "processing", "failed"].includes(voucher.senderEmailDeliveryStatus);
+    if (voucher.senderEmailDeliveryStatus === "sent") return false;
+    if (voucher.senderEmailDeliveryStatus === "skipped") return false;
+    if (voucher.senderEmailDeliveryStatus === "processing") return false;
+    return ["pending", "failed"].includes(voucher.senderEmailDeliveryStatus);
   }
   if (channel === "recipient_email") {
     if (!voucher.recipientEmail) return false;
     if (voucher.recipientEmailId) return false;
-    return ["pending", "processing", "failed"].includes(voucher.recipientEmailDeliveryStatus);
+    if (voucher.recipientEmailDeliveryStatus === "sent") return false;
+    if (voucher.recipientEmailDeliveryStatus === "skipped") return false;
+    if (voucher.recipientEmailDeliveryStatus === "processing") return false;
+    return ["pending", "failed"].includes(voucher.recipientEmailDeliveryStatus);
   }
   return false;
 }
 
-async function deliverSms(voucher) {
+function needsDeliveryProcessing(voucher) {
+  if (!voucher) return false;
+  return (
+    shouldSendChannel(voucher, "sms")
+    || shouldSendChannel(voucher, "sender_email")
+    || shouldSendChannel(voucher, "recipient_email")
+  );
+}
+
+async function deliverSms(voucher, timer = null) {
   return invokeSupabaseFunction("send-voucher-sms", {
     recipient_phone: voucher.recipientPhone,
     voucher_code: voucher.code,
@@ -237,10 +289,10 @@ async function deliverSms(voucher) {
     recipient_name: voucher.recipientName,
     pub_name: voucher.pubName,
     drink_name: voucher.drinkName
-  });
+  }, timer);
 }
 
-async function deliverSenderEmail(voucher) {
+async function deliverSenderEmail(voucher, timer = null) {
   return invokeSupabaseFunction("send-sender-confirmation", {
     sender_email: voucher.senderEmail,
     sender_name: voucher.senderName,
@@ -249,10 +301,10 @@ async function deliverSenderEmail(voucher) {
     drink_name: voucher.drinkName,
     message: voucher.message,
     voucher_code: voucher.code
-  });
+  }, timer);
 }
 
-async function deliverRecipientEmail(voucher) {
+async function deliverRecipientEmail(voucher, timer = null) {
   return invokeSupabaseFunction("send-recipient-gift", {
     recipient_email: voucher.recipientEmail,
     sender_name: voucher.senderName,
@@ -261,19 +313,26 @@ async function deliverRecipientEmail(voucher) {
     drink_name: voucher.drinkName,
     message: voucher.message,
     voucher_code: voucher.code
-  });
+  }, timer);
 }
 
-async function runDeliveryChannel(sessionId, voucher, channel, sendFn) {
+async function runDeliveryChannel(sessionId, voucher, channel, sendFn, timer = null) {
   const current = await getVoucherByStripeSession(sessionId);
   if (!shouldSendChannel(current, channel)) {
     return current || voucher;
   }
 
+  timer?.mark(`${channel}:processing`);
   await updateDeliveryStatus(sessionId, channel, "processing");
 
   try {
-    const result = await sendFn(voucher);
+    const channelStartedAt = Date.now();
+    const result = await sendFn(voucher, timer);
+    timer?.mark(`${channel}:finished`, {
+      channelMs: Date.now() - channelStartedAt,
+      ok: Boolean(result?.ok),
+      invokeMs: result?.invokeMs || null
+    });
     if (result.ok) {
       const externalId = result.message_sid || result.email_id || null;
       return updateDeliveryStatus(sessionId, channel, "sent", externalId);
@@ -325,7 +384,13 @@ async function finalizeFulfillmentStatus(sessionId, voucher) {
   return getVoucherByStripeSession(sessionId);
 }
 
-async function fulfillCheckoutSession(session) {
+async function ensureCheckoutVoucher(session, options = {}) {
+  const timer = createFulfillmentTimer(session?.id, options.source || "ensure-voucher");
+  timer.mark("session:received", {
+    paymentStatus: session?.payment_status,
+    mode: session?.mode
+  });
+
   if (!session || session.payment_status !== "paid") {
     throw new Error("Checkout session is not paid.");
   }
@@ -340,18 +405,62 @@ async function fulfillCheckoutSession(session) {
     throw new Error(`Checkout metadata incomplete: ${missing.join(", ")}`);
   }
 
-  let voucher = await createOrGetCheckoutVoucher(session.id, order);
+  const voucherStartedAt = Date.now();
+  const voucher = await createOrGetCheckoutVoucher(session.id, order);
+  timer.mark("voucher:create", {
+    voucherMs: Date.now() - voucherStartedAt,
+    voucherCode: voucher?.code || null,
+    created: Boolean(voucher)
+  });
+  timer.summary();
+
   if (!voucher) {
     throw new Error("Voucher could not be created.");
   }
 
-  voucher = await runDeliveryChannel(session.id, voucher, "sms", deliverSms);
-  voucher = await runDeliveryChannel(session.id, voucher, "sender_email", deliverSenderEmail);
-  voucher = await runDeliveryChannel(session.id, voucher, "recipient_email", deliverRecipientEmail);
-  voucher = await finalizeFulfillmentStatus(session.id, voucher);
+  return { voucher, order };
+}
 
+async function processCheckoutDeliveries(sessionId, options = {}) {
+  const timer = createFulfillmentTimer(sessionId, options.source || "delivery");
+  let voucher = await getVoucherByStripeSession(sessionId);
+  if (!voucher) {
+    timer.mark("delivery:skipped", { reason: "voucher_missing" });
+    timer.summary();
+    return null;
+  }
+
+  if (!needsDeliveryProcessing(voucher)) {
+    timer.mark("delivery:skipped", {
+      reason: "already_processed",
+      fulfillmentStatus: voucher.fulfillmentStatus,
+      sms: voucher.smsDeliveryStatus,
+      senderEmail: voucher.senderEmailDeliveryStatus,
+      recipientEmail: voucher.recipientEmailDeliveryStatus
+    });
+    timer.summary();
+    return voucher;
+  }
+
+  voucher = await runDeliveryChannel(sessionId, voucher, "sms", deliverSms, timer);
+  voucher = await runDeliveryChannel(sessionId, voucher, "sender_email", deliverSenderEmail, timer);
+  voucher = await runDeliveryChannel(sessionId, voucher, "recipient_email", deliverRecipientEmail, timer);
+  voucher = await finalizeFulfillmentStatus(sessionId, voucher);
+  timer.mark("fulfillment:finalized", {
+    fulfillmentStatus: voucher?.fulfillmentStatus || null,
+    sms: voucher?.smsDeliveryStatus || null,
+    senderEmail: voucher?.senderEmailDeliveryStatus || null,
+    recipientEmail: voucher?.recipientEmailDeliveryStatus || null
+  });
+  timer.summary();
+  return voucher;
+}
+
+async function fulfillCheckoutSession(session, options = {}) {
+  const { voucher, order } = await ensureCheckoutVoucher(session, options);
+  const delivered = await processCheckoutDeliveries(session.id, options);
   return {
-    voucher,
+    voucher: delivered || voucher,
     order
   };
 }
@@ -370,6 +479,7 @@ function buildFulfillmentResponse(voucher) {
   return {
     ok: true,
     status: voucher.fulfillmentStatus || "processing",
+    voucherReady: true,
     paid: true,
     voucher: {
       id: voucher.id,
@@ -418,6 +528,9 @@ module.exports = {
   generateVoucherCode,
   mapVoucherRow,
   getVoucherByStripeSession,
+  ensureCheckoutVoucher,
+  processCheckoutDeliveries,
+  needsDeliveryProcessing,
   fulfillCheckoutSession,
   buildFulfillmentResponse
 };
