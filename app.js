@@ -45,7 +45,7 @@ const DEMO_GIFTS = [
   { id: "cocktail", name: "Cocktail", price: 8.50, icon: "🍸" },
   { id: "spirit", name: "Spirit & Mixer", price: 6.50, icon: "🥃" },
   { id: "soft", name: "Soft Drink", price: 3.50, icon: "🥤" },
-  { id: "tab", name: "€20 Bar Tab", price: 20.50, icon: "💶" }
+  { id: "tab", name: "€20 Bar Tab", price: 20.00, icon: "💶" }
 ];
 
 let gifts = DEMO_GIFTS.map(gift => ({ ...gift }));
@@ -103,10 +103,10 @@ const LOGO = {
 const DEMO = {
   sender: "Ryan",
   senderEmail: "ryan@example.com",
-  recipient: "Dad",
+  recipient: "",
   phone: "087 123 4567",
   phoneCountry: "IE",
-  message: "Happy birthday Dad — have one on me 🍻"
+  message: ""
 };
 let selectedPub = pubs[0];
 let selectedGift = gifts[0];
@@ -467,7 +467,7 @@ async function applyDemoDefaults() {
   await loadGiftsForPub(selectedPub);
   selectedGift = gifts[0];
   customerSubStep = "pub";
-  $("recipientName").value = DEMO.recipient;
+  $("recipientName").value = "";
   if ($("recipientPhoneCountry")) $("recipientPhoneCountry").value = DEMO.phoneCountry;
   $("recipientPhone").value = DEMO.phone;
   if ($("recipientEmail")) $("recipientEmail").value = "";
