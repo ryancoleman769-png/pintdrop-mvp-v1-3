@@ -1473,40 +1473,105 @@ async function startStripeCheckout() {
   }
 }
 
+const FETCH_TIMEOUT_MS = 10000;
+const SMS_STEP_MAX_MS = 2000;
+const VOUCHER_POLL_MAX_MS = 12000;
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (error) {
+      console.warn("[PintDrop] Invalid JSON response:", error);
+    }
+    return { response, data };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchCheckoutVoucher(sessionId) {
+  const { response, data } = await fetchJsonWithTimeout("/api/ensure-checkout-voucher", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId,
+      expectedTotal: pendingOrder?.total
+    })
+  });
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || "Could not create checkout voucher.");
+  }
+
+  return data;
+}
+
+function triggerCheckoutDeliveryFireAndForget(sessionId) {
+  void fetchJsonWithTimeout("/api/trigger-checkout-delivery", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId })
+  }, 5000).catch((error) => {
+    console.warn("[PintDrop Fulfillment] Background delivery trigger failed:", error);
+  });
+}
+
+async function fetchCheckoutDeliveryStatus(sessionId) {
+  const { response, data } = await fetchJsonWithTimeout("/api/checkout-delivery-status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId })
+  }, 8000);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || "Could not load delivery status.");
+  }
+
+  return data;
+}
+
 async function pollUntilCheckoutVoucher(sessionId) {
-  const maxAttempts = 15;
-  const delayMs = 400;
-  const maxWaitMs = 12000;
   const startedAt = Date.now();
   let lastResult = null;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (Date.now() - startedAt > maxWaitMs) {
-      break;
+  while (Date.now() - startedAt < VOUCHER_POLL_MAX_MS) {
+    try {
+      lastResult = await fetchCheckoutVoucher(sessionId);
+      console.log("[PintDrop Fulfillment] Voucher poll attempt", {
+        sessionId,
+        hasVoucher: Boolean(lastResult?.voucher),
+        elapsedMs: Date.now() - startedAt
+      });
+      if (lastResult?.voucher) {
+        return lastResult;
+      }
+    } catch (error) {
+      console.warn("[PintDrop Fulfillment] Voucher poll attempt failed:", error);
     }
-
-    lastResult = await fetchCheckoutFulfillment(sessionId, {
-      triggerDelivery: false
-    });
-    console.log("[PintDrop Fulfillment] Voucher poll attempt", {
-      sessionId,
-      attempt: attempt + 1,
-      hasVoucher: Boolean(lastResult?.voucher),
-      elapsedMs: Date.now() - startedAt
-    });
-    if (lastResult?.voucher) {
-      return lastResult;
-    }
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await new Promise((resolve) => setTimeout(resolve, 350));
   }
 
   return lastResult;
 }
 
-function triggerCheckoutDeliveryAsync(sessionId) {
-  void fetchCheckoutFulfillment(sessionId, { triggerDelivery: true }).catch((error) => {
-    console.warn("[PintDrop Fulfillment] Background delivery trigger failed:", error);
-  });
+function finishCheckoutSuccess(sessionId, voucher, delivery) {
+  const overlay = $("processingOverlay");
+  showCheckoutSuccess(voucher, delivery);
+  startDeliveryStatusPolling(sessionId, voucher);
+  overlay?.classList.add("hidden");
+  resetProcessingSteps();
+  setPurchaseStep("success");
+  void renderPartner();
+  renderSms();
+  clearPendingOrderStorage();
 }
 
 async function completeCheckoutAfterPayment(sessionId) {
@@ -1518,32 +1583,15 @@ async function completeCheckoutAfterPayment(sessionId) {
   overlay?.classList.remove("hidden");
 
   const checkoutReturnStartedAt = performance.now();
-  const overlayMaxMs = 15000;
-  const overlayTimeout = setTimeout(() => {
-    console.warn("[PintDrop Fulfillment] Processing overlay timed out — forcing success recovery.");
-    overlay?.classList.add("hidden");
-    resetProcessingSteps();
-    paymentProcessing = false;
-    if (button) button.disabled = false;
-  }, overlayMaxMs);
-
   activeCheckoutSessionId = sessionId;
   console.log("[PintDrop Fulfillment] Return from Stripe", { sessionId });
 
   try {
     setProcessingStep(1);
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => setTimeout(resolve, 200));
     setProcessingStep(2);
 
-    const pollStartedAt = performance.now();
     const fulfillment = await pollUntilCheckoutVoucher(sessionId);
-    const pollMs = Math.round(performance.now() - pollStartedAt);
-    console.log("[PintDrop Fulfillment] Voucher poll finished", {
-      sessionId,
-      pollMs,
-      hasVoucher: Boolean(fulfillment?.voucher)
-    });
-
     if (!fulfillment?.voucher) {
       throw new Error(
         "Your payment was received, but your PintDrop is still being prepared. Please refresh this page in a moment."
@@ -1551,74 +1599,46 @@ async function completeCheckoutAfterPayment(sessionId) {
     }
 
     syncFulfilledVoucherToLocal(fulfillment.voucher);
-    triggerCheckoutDeliveryAsync(sessionId);
+    triggerCheckoutDeliveryFireAndForget(sessionId);
 
     setProcessingStep(3);
-    const smsVisualMs = 2500;
-    await new Promise((resolve) => setTimeout(resolve, smsVisualMs));
-
+    await new Promise((resolve) => setTimeout(resolve, SMS_STEP_MAX_MS));
     setProcessingStep(4);
-    await new Promise((resolve) => setTimeout(resolve, 150));
 
-    showCheckoutSuccess(fulfillment.voucher, fulfillment.delivery || {
+    finishCheckoutSuccess(sessionId, fulfillment.voucher, {
       sms: "pending",
       senderEmail: "pending",
       whatsapp: fulfillment.voucher.whatsappOptIn === false ? "skipped" : "pending"
     });
-    startDeliveryStatusPolling(sessionId, fulfillment.voucher);
-    overlay?.classList.add("hidden");
-    resetProcessingSteps();
-    setPurchaseStep("success");
-    partnerVouchers = null;
-    await renderPartner();
-    renderSms();
-    clearPendingOrderStorage();
+
     console.log("[PintDrop Fulfillment] Success screen shown", {
       sessionId,
       totalMs: Math.round(performance.now() - checkoutReturnStartedAt),
-      voucherCode: fulfillment?.voucher?.code || null
+      voucherCode: fulfillment.voucher.code
     });
+  } catch (error) {
+    console.warn("[PintDrop Fulfillment] Checkout completion failed:", error);
+    overlay?.classList.add("hidden");
+    resetProcessingSteps();
+    renderReview();
+    setPurchaseStep("review");
+    showStepError(
+      "reviewCheckoutError",
+      error?.message || "Your PintDrop could not be completed. Please try again."
+    );
+    throw error;
   } finally {
-    clearTimeout(overlayTimeout);
     paymentProcessing = false;
     if (button) button.disabled = false;
   }
 }
 
 async function fetchCheckoutFulfillment(sessionId, options = {}) {
-  const { triggerDelivery = false } = options;
-  const startedAt = performance.now();
-  const response = await fetch("/api/checkout-fulfillment", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId,
-      expectedTotal: pendingOrder?.total,
-      triggerDelivery
-    })
-  });
-
-  let data = {};
-  try {
-    data = await response.json();
-  } catch (error) {
-    console.warn("[PintDrop Fulfillment] Invalid fulfillment response:", error);
+  if (options.triggerDelivery) {
+    triggerCheckoutDeliveryFireAndForget(sessionId);
+    return fetchCheckoutDeliveryStatus(sessionId);
   }
-
-  if (!response.ok || !data?.ok) {
-    throw new Error(data?.error || "Could not load checkout fulfillment.");
-  }
-
-  console.log("[PintDrop Fulfillment] Poll response", {
-    sessionId,
-    triggerDelivery,
-    requestMs: Math.round(performance.now() - startedAt),
-    status: data?.status || data?.delivery?.fulfillmentStatus || null,
-    hasVoucher: Boolean(data?.voucher),
-    sms: data?.delivery?.sms || null
-  });
-
-  return data;
+  return fetchCheckoutDeliveryStatus(sessionId);
 }
 
 function isDeliverySettled(delivery) {
@@ -1644,7 +1664,7 @@ function startDeliveryStatusPolling(sessionId, voucher) {
   deliveryStatusPollTimer = setInterval(async () => {
     attempts += 1;
     try {
-      const result = await fetchCheckoutFulfillment(sessionId, { triggerDelivery: false });
+      const result = await fetchCheckoutDeliveryStatus(sessionId);
       if (result?.delivery) {
         updateSuccessDeliveryUI(voucher, result.delivery);
       }
