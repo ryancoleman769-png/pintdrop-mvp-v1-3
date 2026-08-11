@@ -18,7 +18,7 @@ const sampleOrder = {
   total: 7.48,
   recipientName: "Dad",
   recipientPhone: "+353871234567",
-  whatsappOptIn: true,
+  recipientEmail: "dad@example.com",
   senderName: "Ryan",
   senderEmail: "ryan@example.com",
   message: "Happy birthday Dad — have one on me 🍻",
@@ -29,12 +29,12 @@ const metadata = buildCheckoutMetadata(sampleOrder);
 assert.strictEqual(metadata.pub_id, "1");
 assert.strictEqual(metadata.drink_id, "2");
 assert.strictEqual(metadata.recipient_phone, "+353871234567");
-assert.strictEqual(metadata.whatsapp_opt_in, "true");
+assert.strictEqual(metadata.total, "7.48");
 assert.ok(metadata.message.length <= 500);
 
 const parsed = parseCheckoutMetadata(metadata);
 assert.deepStrictEqual(validateCheckoutMetadata(parsed), []);
-assert.strictEqual(parsed.whatsappOptIn, true);
+assert.strictEqual(parsed.recipientEmail, "dad@example.com");
 
 const missing = validateCheckoutMetadata(parseCheckoutMetadata({ pub_id: "1" }));
 assert.ok(missing.includes("drink_id"));
@@ -54,7 +54,7 @@ const response = buildFulfillmentResponse({
   total: 7.48,
   recipientName: "Dad",
   recipientPhone: "+353871234567",
-  whatsappOptIn: true,
+  recipientEmail: "dad@example.com",
   senderName: "Ryan",
   senderEmail: "ryan@example.com",
   message: "Happy birthday",
@@ -66,11 +66,11 @@ const response = buildFulfillmentResponse({
   fulfillmentStatus: "completed",
   smsDeliveryStatus: "sent",
   senderEmailDeliveryStatus: "sent",
-  whatsappDeliveryStatus: "sent"
+  recipientEmailDeliveryStatus: "sent"
 });
 
 assert.strictEqual(response.status, "completed");
 assert.strictEqual(response.voucher.code, "PD-ABC123");
-assert.strictEqual(response.delivery.whatsapp, "sent");
+assert.strictEqual(response.delivery.sms, "sent");
 
 console.log("fulfillment unit tests passed");

@@ -114,7 +114,7 @@ module.exports = async function handler(req, res) {
     const senderName = String(body.senderName || "").trim();
     const recipientName = String(body.recipientName || "").trim();
     const recipientPhone = String(body.recipientPhone || "").trim();
-    const whatsappOptIn = body.whatsappOptIn !== false;
+    const recipientEmail = String(body.recipientEmail || "").trim().toLowerCase();
     const message = String(body.message || "").trim();
     const deliveryDate = String(body.deliveryDate || new Date().toISOString().slice(0, 10)).trim();
 
@@ -208,7 +208,7 @@ module.exports = async function handler(req, res) {
           total: parsedTotal,
           recipientName,
           recipientPhone,
-          whatsappOptIn,
+          recipientEmail,
           senderName,
           senderEmail,
           message: message || `A PintDrop from ${senderName}`,

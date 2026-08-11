@@ -45,7 +45,7 @@ const DEMO_GIFTS = [
   { id: "cocktail", name: "Cocktail", price: 8.50, icon: "🍸" },
   { id: "spirit", name: "Spirit & Mixer", price: 6.50, icon: "🥃" },
   { id: "soft", name: "Soft Drink", price: 3.50, icon: "🥤" },
-  { id: "tab", name: "€20 Bar Tab", price: 20.00, icon: "💶" }
+  { id: "tab", name: "€20 Bar Tab", price: 20.50, icon: "💶" }
 ];
 
 let gifts = DEMO_GIFTS.map(gift => ({ ...gift }));
@@ -103,10 +103,10 @@ const LOGO = {
 const DEMO = {
   sender: "Ryan",
   senderEmail: "ryan@example.com",
-  recipient: "",
+  recipient: "Dad",
   phone: "087 123 4567",
   phoneCountry: "IE",
-  message: ""
+  message: "Happy birthday Dad — have one on me 🍻"
 };
 let selectedPub = pubs[0];
 let selectedGift = gifts[0];
@@ -115,7 +115,6 @@ let paymentProcessing = false;
 let customerSubStep = "pub";
 let activeCheckoutSessionId = null;
 let deliveryStatusPollTimer = null;
-let clientCheckoutSmsResult = null;
 let activeRedemptionVoucherId = null;
 let activeRedemptionVoucher = null;
 let redemptionJustConfirmed = false;
@@ -471,7 +470,6 @@ async function applyDemoDefaults() {
   $("recipientName").value = "";
   if ($("recipientPhoneCountry")) $("recipientPhoneCountry").value = DEMO.phoneCountry;
   $("recipientPhone").value = DEMO.phone;
-  if ($("sendWhatsApp")) $("sendWhatsApp").checked = true;
   $("senderName").value = DEMO.sender;
   if ($("senderEmail")) $("senderEmail").value = DEMO.senderEmail;
   if ($("message")) $("message").value = "";
@@ -704,11 +702,6 @@ function validateGiftStep() {
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
-}
-
-function isWhatsAppOptInSelected() {
-  const checkbox = $("sendWhatsApp");
-  return checkbox ? checkbox.checked : true;
 }
 
 function validateOrderForm() {
@@ -1411,7 +1404,7 @@ function buildPendingOrder() {
     gift: selectedGift,
     recipient,
     phone,
-    whatsappOptIn: isWhatsAppOptInSelected(),
+    recipientEmail: null,
     sender,
     senderEmail,
     message: $("message").value.trim(),
@@ -1427,9 +1420,6 @@ function renderReview() {
     [pendingOrder.gift.icon, "Gift", pendingOrder.gift.name],
     ["📍", "Pub", `${pendingOrder.pub.name}, ${pendingOrder.pub.town}`],
     ["👤", "Recipient", `${pendingOrder.recipient} • ${formatPhoneForDisplay(pendingOrder.phone)}`],
-    ...(pendingOrder.whatsappOptIn
-      ? [["💬", "WhatsApp", "Yes — same mobile number"]]
-      : []),
     ["✉️", "From", pendingOrder.sender],
     ["📧", "Your email", pendingOrder.senderEmail],
     ...(pendingOrder.message ? [["💬", "Message", pendingOrder.message]] : [])
@@ -1491,10 +1481,9 @@ async function completeCheckoutAfterPayment(sessionId) {
   setProcessingStep(2);
 
   const pollStartedAt = performance.now();
-  clientCheckoutSmsResult = null;
-  const fulfillment = await fetchCheckoutFulfillment(sessionId, { triggerDelivery: false });
+  const fulfillment = await pollCheckoutFulfillment(sessionId, { triggerDelivery: true });
   const pollMs = Math.round(performance.now() - pollStartedAt);
-  console.log("[PintDrop Fulfillment] Voucher ready", {
+  console.log("[PintDrop Fulfillment] Voucher poll finished", {
     sessionId,
     pollMs,
     hasVoucher: Boolean(fulfillment?.voucher),
@@ -1508,20 +1497,10 @@ async function completeCheckoutAfterPayment(sessionId) {
   }
 
   syncFulfilledVoucherToLocal(fulfillment.voucher);
-
-  const baseDelivery = {
-    sms: fulfillment.delivery?.sms === "sent" ? "sent" : "pending",
-    senderEmail: fulfillment.delivery?.senderEmail || "pending",
-    whatsapp: fulfillment.delivery?.whatsapp
-      ?? (fulfillment.voucher.whatsappOptIn === false ? "skipped" : "pending"),
-    error: fulfillment.delivery?.error || null
-  };
-
   setProcessingStep(3);
-  const delivery = await deliverClientCheckoutSms(fulfillment.voucher, baseDelivery);
+  await new Promise((resolve) => setTimeout(resolve, 200));
   setProcessingStep(4);
-
-  showCheckoutSuccess(fulfillment.voucher, delivery);
+  showCheckoutSuccess(fulfillment.voucher, fulfillment.delivery);
   startDeliveryStatusPolling(sessionId, fulfillment.voucher);
   overlay?.classList.add("hidden");
   resetProcessingSteps();
@@ -1529,7 +1508,7 @@ async function completeCheckoutAfterPayment(sessionId) {
   paymentProcessing = false;
   if (button) button.disabled = false;
   partnerVouchers = null;
-  void renderPartner();
+  await renderPartner();
   renderSms();
   clearPendingOrderStorage();
   console.log("[PintDrop Fulfillment] Success screen shown", {
@@ -1601,7 +1580,7 @@ async function pollCheckoutFulfillment(sessionId, options = {}) {
 
 function isDeliverySettled(delivery) {
   if (!delivery) return false;
-  const channels = [delivery.sms, delivery.senderEmail, delivery.whatsapp];
+  const channels = [delivery.sms, delivery.senderEmail, delivery.recipientEmail];
   return channels.every((status) => ["sent", "skipped", "failed"].includes(status));
 }
 
@@ -1624,10 +1603,7 @@ function startDeliveryStatusPolling(sessionId, voucher) {
     try {
       const result = await fetchCheckoutFulfillment(sessionId, { triggerDelivery: false });
       if (result?.delivery) {
-        updateSuccessDeliveryUI(
-          voucher,
-          mergeCheckoutDeliveryWithClientSms(result.delivery)
-        );
+        updateSuccessDeliveryUI(voucher, result.delivery);
       }
       if (isDeliverySettled(result?.delivery) || attempts >= maxAttempts) {
         stopDeliveryStatusPolling();
@@ -1746,7 +1722,7 @@ async function createStripeCheckoutSession() {
       pubId: getCheckoutPubId(pendingOrder.pub),
       recipientName: pendingOrder.recipient,
       recipientPhone: pendingOrder.phone,
-      whatsappOptIn: pendingOrder.whatsappOptIn !== false,
+      recipientEmail: "",
       senderName: pendingOrder.sender,
       senderEmail: pendingOrder.senderEmail,
       message: pendingOrder.message,
@@ -1910,10 +1886,6 @@ function resetSuccessDeliveryState() {
   $("successEmailWarning")?.classList.add("hidden");
   $("successEmailWarning").textContent = "";
   if ($("successSmsCheck")) $("successSmsCheck").textContent = "… SMS sending";
-  if ($("successWhatsAppCheck")) {
-    $("successWhatsAppCheck").textContent = "… WhatsApp sending";
-    $("successWhatsAppCheck").classList.remove("hidden");
-  }
   if ($("successEmailCheck")) $("successEmailCheck").textContent = "… Confirmation email sending";
 }
 
@@ -1934,10 +1906,8 @@ function updateSuccessDeliveryUI(voucher, delivery) {
   const senderEmailSkipped = delivery.senderEmail === "skipped";
   const senderEmailFailed = delivery.senderEmail === "failed";
   const senderEmailPending = delivery.senderEmail === "pending" || delivery.senderEmail === "processing";
-  const whatsappSent = delivery.whatsapp === "sent";
-  const whatsappFailed = delivery.whatsapp === "failed";
-  const whatsappPending = delivery.whatsapp === "pending" || delivery.whatsapp === "processing";
-  const showWhatsApp = delivery.whatsapp !== "skipped";
+  const recipientEmailSent = delivery.recipientEmail === "sent";
+  const recipientEmailFailed = delivery.recipientEmail === "failed";
   const allSettled = isDeliverySettled(delivery);
 
   $("successSmsCheck").textContent = formatDeliveryStatus(delivery.sms, {
@@ -1946,20 +1916,6 @@ function updateSuccessDeliveryUI(voucher, delivery) {
     failed: "⚠ SMS not delivered"
   });
 
-  if ($("successWhatsAppCheck")) {
-    if (showWhatsApp) {
-      $("successWhatsAppCheck").classList.remove("hidden");
-      $("successWhatsAppCheck").textContent = formatDeliveryStatus(delivery.whatsapp, {
-        pending: "… WhatsApp sending",
-        success: "✓ WhatsApp delivered",
-        failed: "⚠ WhatsApp not delivered",
-        skipped: "WhatsApp not requested"
-      });
-    } else {
-      $("successWhatsAppCheck").classList.add("hidden");
-    }
-  }
-
   $("successEmailCheck").textContent = formatDeliveryStatus(delivery.senderEmail, {
     pending: "… Confirmation email sending",
     success: "✓ Confirmation email sent",
@@ -1967,14 +1923,14 @@ function updateSuccessDeliveryUI(voucher, delivery) {
     skipped: "✓ Confirmation email sent"
   });
 
-  if (smsPending || senderEmailPending || whatsappPending) {
+  if (smsPending || senderEmailPending) {
     $("successMessage").textContent =
       `Payment confirmed. Your PintDrop ${voucher.code} is ready — we're sending it to ${voucher.recipient} now.`;
   } else if (smsSent) {
     let message =
       `${voucher.recipient} has just received a text message with your gift. They can redeem their ${voucher.gift.name.toLowerCase()} at ${voucher.pub.name}. 🍻`;
-    if (whatsappSent) {
-      message += " We also sent it on WhatsApp.";
+    if (recipientEmailSent && voucher.recipientEmail) {
+      message += ` We also emailed a backup copy to ${voucher.recipientEmail}.`;
     }
     $("successMessage").textContent = message;
   } else if (allSettled) {
@@ -1999,14 +1955,14 @@ function updateSuccessDeliveryUI(voucher, delivery) {
     $("successEmailWarning").classList.remove("hidden");
   }
 
-  if (whatsappFailed && showWhatsApp) {
-    const whatsappWarning =
-      "We could not send the WhatsApp backup message. The SMS is still the primary delivery method.";
+  if (voucher.recipientEmail && recipientEmailFailed) {
+    const recipientWarning =
+      `We could not send the backup email to ${voucher.recipientEmail}. The SMS is still the primary delivery method.`;
     if ($("successSmsWarning").classList.contains("hidden")) {
-      $("successSmsWarning").textContent = whatsappWarning;
+      $("successSmsWarning").textContent = recipientWarning;
       $("successSmsWarning").classList.remove("hidden");
     } else {
-      $("successSmsWarning").textContent += ` ${whatsappWarning}`;
+      $("successSmsWarning").textContent += ` ${recipientWarning}`;
     }
   }
 }
@@ -2017,49 +1973,8 @@ function showCheckoutSuccess(voucher, delivery) {
   updateSuccessDeliveryUI(voucher, delivery || {
     sms: "pending",
     senderEmail: "pending",
-    whatsapp: voucher.whatsappOptIn === false ? "skipped" : "pending"
+    recipientEmail: voucher.recipientEmail ? "pending" : "skipped"
   });
-}
-
-function mergeCheckoutDeliveryWithClientSms(delivery) {
-  if (!delivery || !clientCheckoutSmsResult) return delivery;
-  return {
-    ...delivery,
-    sms: clientCheckoutSmsResult.status,
-    error: clientCheckoutSmsResult.error || delivery.error || null
-  };
-}
-
-async function deliverClientCheckoutSms(voucher, baseDelivery) {
-  const delivery = { ...baseDelivery };
-  if (delivery.sms === "sent") {
-    return delivery;
-  }
-
-  try {
-    const result = await deliverVoucherSms(voucher);
-    delivery.sms = result?.ok ? "sent" : "failed";
-    delivery.error = result?.ok ? null : (result?.error || "SMS could not be sent.");
-    clientCheckoutSmsResult = {
-      status: delivery.sms,
-      error: delivery.error
-    };
-    console.log("[PintDrop SMS] Client checkout delivery finished", {
-      ok: Boolean(result?.ok),
-      messageSid: result?.message_sid || null,
-      error: delivery.error
-    });
-  } catch (error) {
-    delivery.sms = "failed";
-    delivery.error = error?.message || "SMS could not be sent.";
-    clientCheckoutSmsResult = {
-      status: delivery.sms,
-      error: delivery.error
-    };
-    console.warn("[PintDrop SMS] Client checkout delivery failed:", error);
-  }
-
-  return delivery;
 }
 
 async function deliverVoucherSms(voucher) {

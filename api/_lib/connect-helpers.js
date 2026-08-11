@@ -229,27 +229,6 @@ function deriveOnboardingStatus(account) {
   return "not_started";
 }
 
-function getPintDropAppUrl(req) {
-  const explicit = String(process.env.PINTDROP_APP_URL || "").trim();
-  if (explicit) {
-    return explicit.replace(/\/+$/, "");
-  }
-
-  if (req) {
-    const origin = getRequestOrigin(req);
-    if (origin && !/localhost|127\.0\.0\.1/i.test(origin)) {
-      return origin.replace(/\/+$/, "");
-    }
-  }
-
-  const vercelUrl = String(process.env.VERCEL_URL || "").trim();
-  if (vercelUrl) {
-    return `https://${vercelUrl.replace(/^https?:\/\//, "")}`.replace(/\/+$/, "");
-  }
-
-  return "https://pintdrop-mvp-v1-3.vercel.app";
-}
-
 async function syncStripeAccountToSupabase(account) {
   let pubId = Number(account.metadata?.pub_id || account.metadata?.pintdrop_pub_id);
 
@@ -282,7 +261,6 @@ async function syncStripeAccountToSupabase(account) {
 module.exports = {
   DEFAULT_SUPABASE_URL,
   getRequestOrigin,
-  getPintDropAppUrl,
   readJsonBody,
   readRawBody,
   sendJson,

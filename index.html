@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260811-whatsapp1" />
+  <link rel="stylesheet" href="styles.css?v=20260811-async-fulfill1" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -115,11 +115,6 @@
                 <span>Mobile number</span>
               </label>
 
-              <label class="whatsapp-opt-in full">
-                <input id="sendWhatsApp" type="checkbox" checked />
-                <span>Also send their PintDrop on WhatsApp</span>
-              </label>
-
               <label class="float-field full message-field">
                 <textarea id="message" rows="3" placeholder="Add a personal message (optional)"></textarea>
               </label>
@@ -196,7 +191,6 @@
           <div class="success-checks">
             <span>✓ Payment confirmed</span>
             <span id="successSmsCheck">✓ SMS delivered</span>
-            <span id="successWhatsAppCheck">✓ WhatsApp delivered</span>
             <span id="successEmailCheck">✓ Confirmation email sent</span>
             <span>✓ Voucher ready to redeem</span>
           </div>
@@ -512,7 +506,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260811-whatsapp1"></script>
-  <script src="app.js?v=20260811-client-sms3"></script>
+  <script src="supabase-config.js?v=20260811-async-fulfill1"></script>
+  <script src="app.js?v=20260811-form-clean1"></script>
 </body>
 </html>
