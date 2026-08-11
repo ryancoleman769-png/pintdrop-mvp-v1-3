@@ -78,11 +78,14 @@
             <div>
               <p class="eyebrow">Step 2</p>
               <h2>Pick a gift</h2>
-              <p class="section-lead">Send something they'll actually want at the bar.</p>
+              <p class="section-lead">Choose quantities for each drink, or send a standalone Bar Tab.</p>
             </div>
           </div>
-          <div id="giftList" class="gift-grid"></div>
-          <p id="giftStepError" class="step-error hidden" role="alert">Please choose a drink to continue.</p>
+          <div id="menuDrinkList" class="gift-grid drink-menu-grid"></div>
+          <div id="basketPanel" class="basket-panel hidden" aria-live="polite"></div>
+          <div class="bar-tab-divider" aria-hidden="true"><span>Or send a Bar Tab</span></div>
+          <div id="barTabList" class="gift-grid bar-tab-grid"></div>
+          <p id="giftStepError" class="step-error hidden" role="alert">Please choose at least one drink or a Bar Tab to continue.</p>
           <div class="mobile-substep-nav">
             <button type="button" class="secondary ghost-btn mobile-substep-back" data-prev-substep="pub">Back</button>
             <button type="button" class="primary full mobile-continue" data-next-substep="recipient">Continue to recipient</button>
@@ -168,7 +171,7 @@
           <div id="reviewDetails" class="review-list checkout-review"></div>
 
           <div class="price-box checkout-totals">
-            <div class="price-row"><span>Gift</span><strong id="reviewGiftPrice">€0.00</strong></div>
+            <div class="price-row"><span>Pub value</span><strong id="reviewGiftPrice">€0.00</strong></div>
             <div class="price-row"><span>Service fee</span><strong id="reviewFee">€0.00</strong></div>
             <div class="price-row total"><span>Total due</span><strong id="reviewTotal">€0.00</strong></div>
           </div>

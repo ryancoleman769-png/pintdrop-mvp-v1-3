@@ -1360,6 +1360,98 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 #customer .gift-card:hover .gift-card-price {
   transform: scale(1.04);
 }
+#customer .drink-qty-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  cursor: default;
+}
+#customer .drink-qty-card.selected {
+  border-color: rgba(126, 255, 178, 0.55);
+}
+#customer .qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+}
+#customer .qty-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+#customer .qty-btn:hover {
+  background: rgba(126, 255, 178, 0.12);
+  border-color: rgba(126, 255, 178, 0.35);
+}
+#customer .qty-value {
+  min-width: 1.5rem;
+  text-align: center;
+  font-weight: 800;
+}
+#customer .basket-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(126, 255, 178, 0.22);
+  background: rgba(126, 255, 178, 0.06);
+}
+#customer .basket-panel-head,
+#customer .basket-line-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+#customer .basket-panel-head {
+  margin-bottom: 12px;
+}
+#customer .basket-line-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+#customer .basket-line-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+#customer .bar-tab-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#customer .bar-tab-divider::before,
+#customer .bar-tab-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+#customer .bar-tab-grid {
+  grid-template-columns: 1fr;
+}
+#customer .bar-tab-card {
+  width: 100%;
+}
 #customer .field-grid,
 #customer .payment-row {
   display: grid;

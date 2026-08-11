@@ -1,5 +1,13 @@
 const Stripe = require("stripe");
-const { calculateServiceFee, calculateOrderTotal } = require("./_lib/pricing");
+const {
+  parseLineItemsFromBody,
+  validateLineItems,
+  calculateBasketTotals,
+  buildVoucherSummaryFields,
+  compactOrderItemsForMetadata,
+  buildStripeLineItems,
+  METADATA_MAX_LENGTH
+} = require("./_lib/order-items");
 const { supabaseRpc } = require("./_lib/connect-helpers");
 const { buildCheckoutMetadata } = require("./_lib/fulfillment");
 
@@ -101,15 +109,20 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = await readJsonBody(req);
-    const parsedGiftPrice = Number(body.giftPrice);
+    const lineItems = parseLineItemsFromBody(body);
+    const lineValidation = validateLineItems(lineItems);
+    if (!lineValidation.ok) {
+      res.status(400).json({ ok: false, error: lineValidation.error });
+      return;
+    }
+
+    const { pubValue, fee, total } = calculateBasketTotals(lineItems);
     const parsedFee = Number(body.fee);
     const parsedTotal = Number(body.total);
+    const parsedGiftPrice = Number(body.giftPrice ?? body.pubValue ?? pubValue);
     const pubId = Number(body.pubId);
-    const drinkId = Number(body.drinkId);
-    const giftName = String(body.giftName || "PintDrop gift").trim();
     const pubName = String(body.pubName || "").trim();
     const pubLocation = String(body.pubLocation || "").trim();
-    const drinkIcon = String(body.drinkIcon || "🍺").trim();
     const senderEmail = String(body.senderEmail || "").trim().toLowerCase();
     const senderName = String(body.senderName || "").trim();
     const recipientName = String(body.recipientName || "").trim();
@@ -117,32 +130,31 @@ module.exports = async function handler(req, res) {
     const recipientEmail = String(body.recipientEmail || "").trim().toLowerCase();
     const message = String(body.message || "").trim();
     const deliveryDate = String(body.deliveryDate || new Date().toISOString().slice(0, 10)).trim();
+    const summary = buildVoucherSummaryFields(lineItems);
+    const orderItemsMetadata = compactOrderItemsForMetadata(lineItems);
 
-    if (!Number.isFinite(parsedGiftPrice) || parsedGiftPrice <= 0) {
+    if (orderItemsMetadata.length > METADATA_MAX_LENGTH) {
+      res.status(400).json({ ok: false, error: "Order is too large for checkout metadata." });
+      return;
+    }
+
+    if (!Number.isFinite(parsedGiftPrice) || Math.abs(parsedGiftPrice - pubValue) > 0.001) {
       res.status(400).json({ ok: false, error: "Invalid gift price." });
       return;
     }
 
-    const expectedFee = calculateServiceFee(parsedGiftPrice);
-    const expectedTotal = calculateOrderTotal(parsedGiftPrice);
-
-    if (!Number.isFinite(parsedFee) || Math.abs(parsedFee - expectedFee) > 0.001) {
+    if (!Number.isFinite(parsedFee) || Math.abs(parsedFee - fee) > 0.001) {
       res.status(400).json({ ok: false, error: "Invalid order pricing." });
       return;
     }
 
-    if (!Number.isFinite(parsedTotal) || Math.abs(parsedTotal - expectedTotal) > 0.001) {
+    if (!Number.isFinite(parsedTotal) || Math.abs(parsedTotal - total) > 0.001) {
       res.status(400).json({ ok: false, error: "Order total mismatch." });
       return;
     }
 
     if (!Number.isFinite(pubId) || pubId <= 0) {
       res.status(400).json({ ok: false, error: "pubId is required." });
-      return;
-    }
-
-    if (!Number.isFinite(drinkId) || drinkId <= 0) {
-      res.status(400).json({ ok: false, error: "drinkId is required." });
       return;
     }
 
@@ -180,30 +192,18 @@ module.exports = async function handler(req, res) {
       mode: "payment",
       currency: "eur",
       customer_email: senderEmail || undefined,
-      line_items: [
-        {
-          price_data: {
-            currency: "eur",
-            product_data: {
-              name: giftName,
-              description
-            },
-            unit_amount: amountCents
-          },
-          quantity: 1
-        }
-      ],
+      line_items: buildStripeLineItems(lineItems, parsedFee, description),
       success_url: origin + "/?stripe=success&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: origin + "/?stripe=cancelled",
       metadata: {
         ...buildCheckoutMetadata({
           pubId,
-          drinkId,
+          drinkId: summary.drinkId,
           pubName,
           pubLocation,
-          drinkName: giftName,
-          drinkIcon,
-          giftPrice: parsedGiftPrice,
+          drinkName: summary.drinkName,
+          drinkIcon: summary.drinkIcon,
+          giftPrice: pubValue,
           serviceFee: parsedFee,
           total: parsedTotal,
           recipientName,
@@ -212,7 +212,8 @@ module.exports = async function handler(req, res) {
           senderName,
           senderEmail,
           message: message || `A PintDrop from ${senderName}`,
-          deliveryDate
+          deliveryDate,
+          orderItems: orderItemsMetadata
         }),
         checkout_mode: connectAccountId ? "connect" : "platform",
         connect_skip_reason: connectAccountId ? "" : connectSkipReason
@@ -235,7 +236,8 @@ module.exports = async function handler(req, res) {
       ok: true,
       url: session.url,
       sessionId: session.id,
-      connect: Boolean(connectAccountId)
+      connect: Boolean(connectAccountId),
+      amountCents
     });
   } catch (error) {
     console.error("[create-checkout-session]", error);

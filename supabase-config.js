@@ -107,6 +107,39 @@ window.PintDropSupabase.mapPubRow = mapSupabasePubRow;
 
 // ===== Drinks / menu (Supabase) =====
 
+const PURCHASE_HIDDEN_DRINK_SLUGS = new Set(["soft"]);
+const BAR_TAB_DRINK_SLUG = "tab";
+
+function isPurchasableDrinkRow(row) {
+  const slug = String(row.slug || "").trim().toLowerCase();
+  return !PURCHASE_HIDDEN_DRINK_SLUGS.has(slug);
+}
+
+function formatOrderSummary(lineItems) {
+  return (lineItems || [])
+    .filter((item) => item.quantity > 0)
+    .map((item) => `${item.quantity}× ${item.name}`)
+    .join(", ");
+}
+
+function mapLineItemsFromVoucherRow(row) {
+  const rawItems = Array.isArray(row.line_items) ? row.line_items : [];
+  if (!rawItems.length) return [];
+
+  return rawItems.map((item, index) => ({
+    drinkId: Number(item.drink_id),
+    supabaseId: Number(item.drink_id),
+    slug: "",
+    name: String(item.drink_name || "").trim(),
+    icon: String(item.drink_icon || "🍺").trim() || "🍺",
+    unitPrice: Number(item.unit_price),
+    quantity: Number(item.quantity),
+    lineSubtotal: Number(item.line_subtotal),
+    sortOrder: Number(item.sort_order ?? index + 1),
+    source: "supabase"
+  })).filter((item) => item.name && item.quantity > 0);
+}
+
 function mapSupabaseDrinkRow(row) {
   const menuPrice = row.slug === "tab" ? 20 : Number(row.price);
   return {
@@ -134,11 +167,15 @@ async function fetchDrinksFromSupabase(pubId) {
     return null;
   }
 
-  return (data || []).map(mapSupabaseDrinkRow);
+  return (data || [])
+    .filter(isPurchasableDrinkRow)
+    .map(mapSupabaseDrinkRow);
 }
 
 window.PintDropSupabase.fetchDrinks = fetchDrinksFromSupabase;
 window.PintDropSupabase.mapDrinkRow = mapSupabaseDrinkRow;
+window.PintDropSupabase.formatOrderSummary = formatOrderSummary;
+window.PintDropSupabase.BAR_TAB_DRINK_SLUG = BAR_TAB_DRINK_SLUG;
 
 // ===== Vouchers (Supabase RPC — no direct table access) =====
 
@@ -156,6 +193,14 @@ function mapSupabaseVoucherRow(row) {
 
   const pubSlug = PUB_SLUG_BY_SUPABASE_ID[row.pub_id] || `pub-${row.pub_id}`;
   const assets = PUB_LOCAL_ASSETS[pubSlug] || {};
+  const lineItems = mapLineItemsFromVoucherRow(row);
+  const giftName = lineItems.length > 1 || (lineItems.length === 1 && lineItems[0].quantity > 1)
+    ? formatOrderSummary(lineItems)
+    : row.drink_name;
+  const giftIcon = lineItems.length === 1
+    ? (lineItems[0].icon || row.drink_icon || "🍺")
+    : (row.drink_icon || "🍻");
+  const primaryLine = lineItems[0];
 
   return {
     id: row.id,
@@ -171,13 +216,14 @@ function mapSupabaseVoucherRow(row) {
       source: "supabase"
     },
     gift: {
-      id: row.drink_slug || String(row.drink_id),
-      supabaseId: row.drink_id,
-      name: row.drink_name,
+      id: primaryLine?.slug || row.drink_slug || String(row.drink_id),
+      supabaseId: primaryLine?.supabaseId || row.drink_id,
+      name: giftName,
       price: Number(row.drink_price),
-      icon: row.drink_icon || "🍺",
+      icon: giftIcon,
       source: "supabase"
     },
+    lineItems,
     recipient: row.recipient_name,
     phone: row.recipient_phone || "",
     recipientEmail: row.recipient_email || null,
@@ -307,7 +353,12 @@ function buildVoucherSmsPayload(voucher) {
       voucher.pub?.name || voucher.pub_name || ""
     ).trim(),
     drink_name: String(
-      voucher.gift?.name || voucher.drink_name || ""
+      (voucher.lineItems?.length
+        ? window.PintDropSupabase.formatOrderSummary(voucher.lineItems)
+        : null)
+      || voucher.gift?.name
+      || voucher.drink_name
+      || ""
     ).trim()
   };
 }

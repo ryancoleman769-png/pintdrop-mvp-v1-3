@@ -1,4 +1,9 @@
 const { getSupabaseUrl, getSupabaseServiceRoleKey, supabaseRpc } = require("./connect-helpers");
+const {
+  parseOrderItemsFromMetadata,
+  lineItemsToRpcJson,
+  formatOrderSummary
+} = require("./order-items");
 
 const METADATA_MAX_LENGTH = 500;
 
@@ -39,7 +44,7 @@ function generateVoucherCode() {
 }
 
 function buildCheckoutMetadata(order) {
-  return {
+  const metadata = {
     pub_id: String(order.pubId || ""),
     drink_id: String(order.drinkId || ""),
     pub_name: trimMetadata(order.pubName),
@@ -57,6 +62,12 @@ function buildCheckoutMetadata(order) {
     message: trimMetadata(order.message),
     delivery_date: trimMetadata(order.deliveryDate, 10)
   };
+
+  if (order.orderItems) {
+    metadata.order_items = trimMetadata(order.orderItems, METADATA_MAX_LENGTH);
+  }
+
+  return metadata;
 }
 
 function parseCheckoutMetadata(metadata = {}) {
@@ -83,7 +94,8 @@ function parseCheckoutMetadata(metadata = {}) {
     senderEmail: trimMetadata(metadata.sender_email).toLowerCase(),
     message: trimMetadata(metadata.message) || "",
     deliveryDate: trimMetadata(metadata.delivery_date, 10)
-      || new Date().toISOString().slice(0, 10)
+      || new Date().toISOString().slice(0, 10),
+    lineItems: parseOrderItemsFromMetadata(metadata)
   };
 }
 
@@ -100,6 +112,21 @@ function validateCheckoutMetadata(order) {
   return missing;
 }
 
+function mapLineItemsFromRow(row) {
+  const rawItems = Array.isArray(row.line_items) ? row.line_items : [];
+  if (!rawItems.length) return [];
+
+  return rawItems.map((item, index) => ({
+    drinkId: Number(item.drink_id),
+    name: String(item.drink_name || "").trim(),
+    icon: String(item.drink_icon || "🍺").trim() || "🍺",
+    unitPrice: Number(item.unit_price),
+    quantity: Number(item.quantity),
+    lineSubtotal: Number(item.line_subtotal),
+    sortOrder: Number(item.sort_order ?? index + 1)
+  })).filter((item) => item.name && item.quantity > 0);
+}
+
 function mapVoucherRow(row) {
   if (!row) return null;
   if (typeof row === "string") {
@@ -110,6 +137,14 @@ function mapVoucherRow(row) {
     }
   }
 
+  const lineItems = mapLineItemsFromRow(row);
+  const drinkName = lineItems.length > 1 || (lineItems.length === 1 && lineItems[0].quantity > 1)
+    ? formatOrderSummary(lineItems)
+    : row.drink_name;
+  const drinkIcon = lineItems.length === 1
+    ? (lineItems[0].icon || row.drink_icon || "🍺")
+    : (row.drink_icon || "🍻");
+
   return {
     id: row.id,
     code: row.code,
@@ -117,11 +152,12 @@ function mapVoucherRow(row) {
     drinkId: row.drink_id,
     pubName: row.pub_name,
     pubLocation: row.pub_location,
-    drinkName: row.drink_name,
-    drinkIcon: row.drink_icon,
+    drinkName,
+    drinkIcon,
     drinkPrice: Number(row.drink_price),
     serviceFee: Number(row.service_fee),
     total: Number(row.total),
+    lineItems,
     recipientName: row.recipient_name,
     recipientPhone: row.recipient_phone,
     recipientEmail: row.recipient_email || null,
@@ -210,6 +246,9 @@ async function createOrGetCheckoutVoucher(sessionId, order) {
 
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const code = generateVoucherCode();
+  const rpcLineItems = order.lineItems?.length
+    ? lineItemsToRpcJson(order.lineItems)
+    : null;
   const row = await supabaseRpc("fulfill_checkout_voucher", {
     p_stripe_checkout_session_id: sessionId,
     p_code: code,
@@ -229,7 +268,8 @@ async function createOrGetCheckoutVoucher(sessionId, order) {
     p_sender_email: order.senderEmail,
     p_message: order.message || `A PintDrop from ${order.senderName}`,
     p_delivery_date: order.deliveryDate,
-    p_expires_at: expiresAt
+    p_expires_at: expiresAt,
+    p_line_items: rpcLineItems
   });
 
   return mapVoucherRow(row);

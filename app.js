@@ -45,16 +45,129 @@ const DEMO_GIFTS = [
   { id: "cocktail", name: "Cocktail", price: 8.50, icon: "🍸" },
   { id: "spirit", name: "Spirit & Mixer", price: 6.50, icon: "🥃" },
   { id: "soft", name: "Soft Drink", price: 3.50, icon: "🥤" },
-  { id: "tab", name: "€20 Bar Tab", price: 20.50, icon: "💶" }
+  { id: "tab", name: "€20 Bar Tab", price: 20.00, icon: "💶" }
 ];
+
+const PURCHASE_HIDDEN_DRINK_IDS = new Set(["soft"]);
+const BAR_TAB_DRINK_ID = "tab";
+const MAX_DRINK_QUANTITY = 20;
 
 let gifts = DEMO_GIFTS.map(gift => ({ ...gift }));
 
+function filterPurchasableGifts(list) {
+  return (list || []).filter(gift => !PURCHASE_HIDDEN_DRINK_IDS.has(gift.id));
+}
+
+function getMenuDrinks() {
+  return gifts.filter(gift => gift.id !== BAR_TAB_DRINK_ID);
+}
+
+function getBarTabGift() {
+  return gifts.find(gift => gift.id === BAR_TAB_DRINK_ID) || null;
+}
+
+let orderMode = "drinks";
+let drinkQuantities = {};
+
+function resetBasket() {
+  orderMode = "drinks";
+  drinkQuantities = {};
+}
+
+function roundMoney(value) {
+  return Math.round(Number(value) * 100) / 100;
+}
+
+function formatOrderSummary(lineItems) {
+  if (window.PintDropSupabase?.formatOrderSummary) {
+    return window.PintDropSupabase.formatOrderSummary(lineItems);
+  }
+  return (lineItems || [])
+    .map(item => `${item.quantity}× ${item.name}`)
+    .join(", ");
+}
+
+function getVoucherGiftLabel(voucher) {
+  if (!voucher) return "";
+  if (voucher.lineItems?.length) {
+    return formatOrderSummary(voucher.lineItems);
+  }
+  return voucher.gift?.name || "";
+}
+
+function calculateBasketTotalsFromLineItems(lineItems) {
+  const pubValue = roundMoney(
+    (lineItems || []).reduce((sum, item) => sum + Number(item.lineSubtotal || 0), 0)
+  );
+  return {
+    pubValue,
+    fee: calculateServiceFee(pubValue),
+    total: calculateOrderTotal(pubValue)
+  };
+}
+
+function getBasketLineItems() {
+  if (orderMode === "tab") {
+    const tab = getBarTabGift();
+    if (!tab) return [];
+    const drinkId = getCheckoutDrinkId(tab, selectedPub);
+    if (!drinkId) return [];
+    return [{
+      drinkId,
+      slug: tab.id,
+      name: tab.name,
+      icon: tab.icon,
+      unitPrice: tab.price,
+      quantity: 1,
+      lineSubtotal: roundMoney(tab.price)
+    }];
+  }
+
+  return getMenuDrinks()
+    .map(gift => {
+      const quantity = Number(drinkQuantities[gift.id] || 0);
+      if (quantity <= 0) return null;
+      const drinkId = getCheckoutDrinkId(gift, selectedPub);
+      if (!drinkId) return null;
+      return {
+        drinkId,
+        slug: gift.id,
+        name: gift.name,
+        icon: gift.icon,
+        unitPrice: gift.price,
+        quantity,
+        lineSubtotal: roundMoney(gift.price * quantity)
+      };
+    })
+    .filter(Boolean);
+}
+
+function setDrinkQuantity(giftId, nextQuantity) {
+  const quantity = Math.max(0, Math.min(MAX_DRINK_QUANTITY, Number(nextQuantity) || 0));
+  if (quantity <= 0) {
+    delete drinkQuantities[giftId];
+  } else {
+    drinkQuantities[giftId] = quantity;
+  }
+  orderMode = "drinks";
+  renderChoices();
+  renderSummary();
+  $("giftStepError")?.classList.add("hidden");
+}
+
+function selectBarTab() {
+  orderMode = "tab";
+  drinkQuantities = {};
+  renderChoices();
+  renderSummary();
+  $("giftStepError")?.classList.add("hidden");
+}
+
 async function loadGiftsForPub(pub) {
-  gifts = DEMO_GIFTS.map(gift => ({ ...gift, source: "demo" }));
+  gifts = filterPurchasableGifts(DEMO_GIFTS).map(gift => ({ ...gift, source: "demo" }));
 
   if (!pub?.supabaseId || !window.PintDropSupabase?.isConfigured?.()) {
-    ensureSelectedGiftValid();
+    ensureBasketValid();
     return;
   }
 
@@ -67,13 +180,23 @@ async function loadGiftsForPub(pub) {
     console.warn("[PintDrop] Using demo drinks after Supabase error:", error);
   }
 
-  ensureSelectedGiftValid();
+  ensureBasketValid();
 }
 
-function ensureSelectedGiftValid() {
-  if (!gifts.length) return;
-  if (!selectedGift || !gifts.some(gift => gift.id === selectedGift.id)) {
-    selectedGift = gifts.find(gift => gift.id === "pint") || gifts[0];
+function ensureBasketValid() {
+  Object.keys(drinkQuantities).forEach(giftId => {
+    if (!gifts.some(gift => gift.id === giftId)) {
+      delete drinkQuantities[giftId];
+    }
+  });
+  if (orderMode === "tab" && !getBarTabGift()) {
+    orderMode = "drinks";
+  }
+  if (orderMode === "drinks" && !getBasketLineItems().length) {
+    const firstMenuDrink = getMenuDrinks()[0];
+    if (firstMenuDrink && !Object.keys(drinkQuantities).length) {
+      drinkQuantities[firstMenuDrink.id] = 1;
+    }
   }
 }
 
@@ -109,7 +232,6 @@ const DEMO = {
   message: ""
 };
 let selectedPub = pubs[0];
-let selectedGift = gifts[0];
 let pendingOrder = null;
 let paymentProcessing = false;
 let customerSubStep = "pub";
@@ -465,7 +587,8 @@ function formatDate(value) {
 async function applyDemoDefaults() {
   selectedPub = pubs.find(pub => pub.participating) || pubs[0];
   await loadGiftsForPub(selectedPub);
-  selectedGift = gifts[0];
+  resetBasket();
+  ensureBasketValid();
   customerSubStep = "pub";
   $("recipientName").value = "";
   if ($("recipientPhoneCountry")) $("recipientPhoneCountry").value = DEMO.phoneCountry;
@@ -693,8 +816,8 @@ function validatePubStep() {
 }
 
 function validateGiftStep() {
-  if (!selectedGift) {
-    showStepError("giftStepError");
+  if (!getBasketLineItems().length) {
+    showStepError("giftStepError", "Please choose at least one drink or a Bar Tab to continue.");
     return false;
   }
   return true;
@@ -767,22 +890,73 @@ function renderChoices() {
   `;
   }).join("");
 
-  $("giftList").innerHTML = gifts.map(gift => `
-    <button type="button" class="gift-card ${gift.id === selectedGift.id ? "selected" : ""}" data-gift="${gift.id}">
+  $("menuDrinkList").innerHTML = getMenuDrinks().map(gift => {
+    const quantity = Number(drinkQuantities[gift.id] || 0);
+    const selected = orderMode === "drinks" && quantity > 0;
+    return `
+    <div class="gift-card drink-qty-card ${selected ? "selected" : ""}" data-gift="${gift.id}">
       <span class="gift-card-icon">${gift.icon}</span>
       <div class="gift-card-body">
         <strong>${gift.name}</strong>
-        <small>Available to send</small>
+        <small>${money(gift.price)} each</small>
       </div>
-      <span class="gift-card-price">${money(gift.price)}</span>
+      <div class="qty-stepper" role="group" aria-label="${gift.name} quantity">
+        <button type="button" class="qty-btn" data-qty-action="decrease" data-gift="${gift.id}" aria-label="Decrease ${gift.name}">−</button>
+        <span class="qty-value" aria-live="polite">${quantity}</span>
+        <button type="button" class="qty-btn" data-qty-action="increase" data-gift="${gift.id}" aria-label="Increase ${gift.name}">+</button>
+      </div>
+    </div>
+  `;
+  }).join("");
+
+  const barTab = getBarTabGift();
+  $("barTabList").innerHTML = barTab ? `
+    <button type="button" class="gift-card bar-tab-card ${orderMode === "tab" ? "selected" : ""}" data-bar-tab="${barTab.id}">
+      <span class="gift-card-icon">${barTab.icon}</span>
+      <div class="gift-card-body">
+        <strong>${barTab.name}</strong>
+        <small>Standalone gift — not combinable with drinks yet</small>
+      </div>
+      <span class="gift-card-price">${money(barTab.price)}</span>
     </button>
-  `).join("");
+  ` : "";
+
+  const lineItems = getBasketLineItems();
+  const basketPanel = $("basketPanel");
+  if (basketPanel) {
+    if (!lineItems.length) {
+      basketPanel.classList.add("hidden");
+      basketPanel.innerHTML = "";
+    } else {
+      const totals = calculateBasketTotalsFromLineItems(lineItems);
+      basketPanel.classList.remove("hidden");
+      basketPanel.innerHTML = `
+        <div class="basket-panel-head">
+          <strong>Your order</strong>
+          <span>${money(totals.total)} incl. fee</span>
+        </div>
+        <ul class="basket-line-list">
+          ${lineItems.map(item => `
+            <li class="basket-line-item">
+              <span>${item.quantity}× ${item.name}</span>
+              <span>${money(item.lineSubtotal)}</span>
+            </li>
+          `).join("")}
+        </ul>
+        <div class="basket-line-total">
+          <span>Pub value</span>
+          <strong>${money(totals.pubValue)}</strong>
+        </div>
+      `;
+    }
+  }
 
   document.querySelectorAll("[data-pub]").forEach(btn => {
     btn.onclick = async () => {
       const pub = pubs.find(item => item.id === btn.dataset.pub);
       if (!isParticipatingPub(pub)) return;
       selectedPub = pub;
+      resetBasket();
       await loadGiftsForPub(selectedPub);
       renderChoices();
       renderSummary();
@@ -790,12 +964,19 @@ function renderChoices() {
     };
   });
 
-  document.querySelectorAll("[data-gift]").forEach(btn => {
+  document.querySelectorAll("[data-qty-action]").forEach(btn => {
+    btn.onclick = (event) => {
+      event.stopPropagation();
+      const giftId = btn.dataset.gift;
+      const current = Number(drinkQuantities[giftId] || 0);
+      const next = btn.dataset.qtyAction === "increase" ? current + 1 : current - 1;
+      setDrinkQuantity(giftId, next);
+    };
+  });
+
+  document.querySelectorAll("[data-bar-tab]").forEach(btn => {
     btn.onclick = () => {
-      selectedGift = gifts.find(gift => gift.id === btn.dataset.gift);
-      renderChoices();
-      renderSummary();
-      $("giftStepError")?.classList.add("hidden");
+      selectBarTab();
     };
   });
 
@@ -814,9 +995,18 @@ function filterPubList(query) {
 }
 
 function renderSummary() {
+  const lineItems = getBasketLineItems();
   $("summaryPub").textContent = `${selectedPub.name}, ${selectedPub.town}`;
-  $("summaryGift").textContent = selectedGift.name;
-  $("summaryPrice").textContent = money(calculateOrderTotal(selectedGift.price));
+  if (!lineItems.length) {
+    $("summaryGift").textContent = "Not selected";
+    $("summaryPrice").textContent = money(0);
+    return;
+  }
+  const summaryLabel = lineItems.length === 1 && lineItems[0].quantity === 1
+    ? lineItems[0].name
+    : formatOrderSummary(lineItems);
+  $("summaryGift").textContent = summaryLabel;
+  $("summaryPrice").textContent = money(calculateBasketTotalsFromLineItems(lineItems).total);
 }
 
 function setRecipientVoucherMode(active) {
@@ -1292,9 +1482,9 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
   ).forEach(el => el.classList.remove("hidden"));
 
   const isRedeemed = voucher.status === "redeemed";
-  const giftLabel = voucher.gift.name.toUpperCase();
+  const giftLabel = getVoucherGiftLabel(voucher);
 
-  $("redemptionGift").textContent = `${voucher.gift.icon} ${voucher.gift.name}`;
+  $("redemptionGift").textContent = `${voucher.gift.icon} ${giftLabel}`;
   $("redemptionPub").textContent = `${voucher.pub.name}, ${voucher.pub.town}`;
   $("redemptionRecipient").textContent = voucher.recipient;
   $("redemptionSender").textContent = voucher.sender;
@@ -1309,7 +1499,7 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
     statusEl.textContent = "REDEEMED";
     statusEl.className = "redemption-status redemption-status-hero status redeemed";
     alreadyBanner.classList.add("hidden");
-    successEl.textContent = `${voucher.gift.name} redeemed successfully.`;
+    successEl.textContent = `${giftLabel} redeemed successfully.`;
     successEl.classList.remove("hidden");
     $("redemptionTime").classList.add("hidden");
   } else if (isRedeemed) {
@@ -1337,13 +1527,13 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
   }
 
   const redeemBtn = $("redemptionRedeemBtn");
-  redeemBtn.textContent = `REDEEM ${giftLabel}`;
+  redeemBtn.textContent = `REDEEM ${giftLabel.toUpperCase()}`;
   redeemBtn.disabled = isRedeemed;
   redeemBtn.classList.toggle("hidden", barMode || isRedeemed);
 
   $("redemptionConfirm")?.classList.add("hidden");
   $("redemptionConfirmCopy").textContent =
-    `Confirm ${voucher.recipient} has received their ${voucher.gift.name.toLowerCase()} at ${voucher.pub.name}.`;
+    `Confirm ${voucher.recipient} has received their ${giftLabel.toLowerCase()} at ${voucher.pub.name}.`;
 }
 
 function showRedemptionConfirm() {
@@ -1396,12 +1586,27 @@ function buildPendingOrder() {
   const sender = $("senderName").value.trim();
   const senderEmail = $("senderEmail").value.trim().toLowerCase();
   const deliveryDate = new Date().toISOString().slice(0, 10);
+  const lineItems = getBasketLineItems();
 
-  if (!recipient || !phone || !sender || !senderEmail) return null;
+  if (!recipient || !phone || !sender || !senderEmail || !lineItems.length) return null;
+
+  const totals = calculateBasketTotalsFromLineItems(lineItems);
+  const summaryLabel = lineItems.length === 1 && lineItems[0].quantity === 1
+    ? lineItems[0].name
+    : formatOrderSummary(lineItems);
 
   return {
     pub: selectedPub,
-    gift: selectedGift,
+    lineItems,
+    orderMode,
+    gift: {
+      id: lineItems[0].slug,
+      supabaseId: lineItems[0].drinkId,
+      name: summaryLabel,
+      icon: lineItems.length === 1 ? lineItems[0].icon : "🍻",
+      price: totals.pubValue
+    },
+    pubValue: totals.pubValue,
     recipient,
     phone,
     recipientEmail: null,
@@ -1409,15 +1614,23 @@ function buildPendingOrder() {
     senderEmail,
     message: $("message").value.trim(),
     deliveryDate,
-    fee: calculateServiceFee(selectedGift.price),
-    total: calculateOrderTotal(selectedGift.price)
+    fee: totals.fee,
+    total: totals.total
   };
 }
 
 function renderReview() {
   if (!pendingOrder) return;
-  const rows = [
-    [pendingOrder.gift.icon, "Gift", pendingOrder.gift.name],
+  const lineItemRows = pendingOrder.lineItems.map(item => `
+    <div class="review-row checkout-review-row basket-review-row">
+      <span class="review-icon">${item.icon}</span>
+      <div class="review-copy">
+        <small>${item.quantity}× ${item.name}</small>
+        <strong>${money(item.unitPrice)} each · ${money(item.lineSubtotal)}</strong>
+      </div>
+    </div>
+  `).join("");
+  const detailRows = [
     ["📍", "Pub", `${pendingOrder.pub.name}, ${pendingOrder.pub.town}`],
     ["👤", "Recipient", `${pendingOrder.recipient} • ${formatPhoneForDisplay(pendingOrder.phone)}`],
     ["✉️", "From", pendingOrder.sender],
@@ -1425,14 +1638,14 @@ function renderReview() {
     ...(pendingOrder.message ? [["💬", "Message", pendingOrder.message]] : [])
   ];
 
-  $("reviewDetails").innerHTML = rows.map(([icon, label, value]) => `
+  $("reviewDetails").innerHTML = lineItemRows + detailRows.map(([icon, label, value]) => `
     <div class="review-row checkout-review-row">
       <span class="review-icon">${icon}</span>
       <div class="review-copy"><small>${label}</small><strong>${value}</strong></div>
     </div>
   `).join("");
 
-  $("reviewGiftPrice").textContent = money(pendingOrder.gift.price);
+  $("reviewGiftPrice").textContent = money(pendingOrder.pubValue);
   $("reviewFee").textContent = money(pendingOrder.fee);
   $("reviewTotal").textContent = money(pendingOrder.total);
   const payButton = $("goToPayment");
@@ -1633,6 +1846,7 @@ function syncFulfilledVoucherToLocal(voucher) {
       ...voucher.gift,
       source: "supabase"
     },
+    lineItems: Array.isArray(voucher.lineItems) ? voucher.lineItems : [],
     recipient: voucher.recipient,
     phone: voucher.phone,
     recipientEmail: voucher.recipientEmail || null,
@@ -1711,12 +1925,17 @@ async function createStripeCheckoutSession() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      lineItems: pendingOrder.lineItems.map((item) => ({
+        drinkId: item.drinkId,
+        slug: item.slug,
+        name: item.name,
+        icon: item.icon,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity
+      })),
       total: pendingOrder.total,
-      giftPrice: pendingOrder.gift.price,
+      giftPrice: pendingOrder.pubValue,
       fee: pendingOrder.fee,
-      giftName: pendingOrder.gift.name,
-      drinkId: getCheckoutDrinkId(pendingOrder.gift, pendingOrder.pub),
-      drinkIcon: pendingOrder.gift.icon,
       pubName: pendingOrder.pub.name,
       pubLocation: pendingOrder.pub.town,
       pubId: getCheckoutPubId(pendingOrder.pub),
@@ -1927,7 +2146,7 @@ function updateSuccessDeliveryUI(voucher, delivery) {
       `Payment confirmed. Your PintDrop ${voucher.code} is ready — we're sending it to ${voucher.recipient} now.`;
   } else if (smsSent) {
     let message =
-      `${voucher.recipient} has just received a text message with your gift. They can redeem their ${voucher.gift.name.toLowerCase()} at ${voucher.pub.name}. 🍻`;
+      `${voucher.recipient} has just received a text message with your gift. They can redeem their ${getVoucherGiftLabel(voucher).toLowerCase()} at ${voucher.pub.name}. 🍻`;
     if (recipientEmailSent && voucher.recipientEmail) {
       message += ` We also emailed a backup copy to ${voucher.recipientEmail}.`;
     }
@@ -2124,8 +2343,9 @@ function renderBarRedemptionQr(code, targetId = "fakeQr") {
 
 function populateVoucherFields(voucher, prefix = "") {
   const id = (name) => $(`${prefix}${name}`);
+  const giftLabel = getVoucherGiftLabel(voucher);
   id("GiftIcon").textContent = voucher.gift.icon;
-  id("Gift").textContent = voucher.gift.name;
+  id("Gift").textContent = giftLabel;
   id("Pub").textContent = `${voucher.pub.name}, ${voucher.pub.town}`;
   id("Message").textContent = `“${voucher.message}”`;
   id("Code").textContent = voucher.code;
@@ -2215,10 +2435,11 @@ function renderSms() {
 
   $("smsEmpty").classList.add("hidden");
   $("smsThread").classList.remove("hidden");
-  $("smsHeadline").textContent = `${voucher.gift.icon} ${voucher.sender} has bought you a ${voucher.gift.name.toLowerCase()}!`;
+  const giftLabel = getVoucherGiftLabel(voucher);
+  $("smsHeadline").textContent = `${voucher.gift.icon} ${voucher.sender} has bought you a ${giftLabel.toLowerCase()}!`;
   $("smsPersonalMessage").textContent = `“${voucher.message}”`;
   $("smsGiftIcon").textContent = voucher.gift.icon;
-  $("smsGift").textContent = voucher.gift.name;
+  $("smsGift").textContent = giftLabel;
   $("smsPub").textContent = `${voucher.pub.name}, ${voucher.pub.town}`;
   $("smsRedeemedNotice").classList.toggle("hidden", voucher.status !== "redeemed");
   $("smsTime").textContent = new Date(voucher.createdAt).toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit" });
