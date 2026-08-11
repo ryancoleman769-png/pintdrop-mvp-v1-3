@@ -114,7 +114,6 @@ let pendingOrder = null;
 let paymentProcessing = false;
 let customerSubStep = "pub";
 let activeCheckoutSessionId = null;
-let lastCheckoutFulfilledVoucher = null;
 let deliveryStatusPollTimer = null;
 let activeRedemptionVoucherId = null;
 let activeRedemptionVoucher = null;
@@ -1474,34 +1473,18 @@ async function startStripeCheckout() {
   }
 }
 
-const FETCH_TIMEOUT_MS = 8000;
-const VOUCHER_POLL_HARD_CAP_MS = 8000;
-const CHECKOUT_OVERLAY_HARD_CAP_MS = 10000;
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const FETCH_TIMEOUT_MS = 10000;
+const SMS_STEP_MAX_MS = 2000;
+const VOUCHER_POLL_MAX_MS = 12000;
 
 async function fetchJsonWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-  let timeoutId = null;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`Request timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-
   const controller = new AbortController();
-  const abortTimeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await Promise.race([
-      fetch(url, {
-        ...options,
-        signal: controller.signal
-      }),
-      timeoutPromise
-    ]);
-
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
     let data = {};
     try {
       data = await response.json();
@@ -1510,8 +1493,7 @@ async function fetchJsonWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT
     }
     return { response, data };
   } finally {
-    clearTimeout(timeoutId);
-    clearTimeout(abortTimeoutId);
+    clearTimeout(timeout);
   }
 }
 
@@ -1532,12 +1514,22 @@ async function fetchCheckoutVoucher(sessionId) {
   return data;
 }
 
+function triggerCheckoutDeliveryFireAndForget(sessionId) {
+  void fetchJsonWithTimeout("/api/trigger-checkout-delivery", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId })
+  }, 5000).catch((error) => {
+    console.warn("[PintDrop Fulfillment] Background delivery trigger failed:", error);
+  });
+}
+
 async function fetchCheckoutDeliveryStatus(sessionId) {
   const { response, data } = await fetchJsonWithTimeout("/api/checkout-delivery-status", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId })
-  }, 6000);
+  }, 8000);
 
   if (!response.ok || !data?.ok) {
     throw new Error(data?.error || "Could not load delivery status.");
@@ -1546,68 +1538,37 @@ async function fetchCheckoutDeliveryStatus(sessionId) {
   return data;
 }
 
-function triggerCheckoutDeliveryFireAndForget(sessionId) {
-  const payload = JSON.stringify({ sessionId });
-  try {
-    if (navigator.sendBeacon) {
-      const blob = new Blob([payload], { type: "application/json" });
-      if (navigator.sendBeacon("/api/trigger-checkout-delivery", blob)) {
-        return;
-      }
-    }
-  } catch (error) {
-    console.warn("[PintDrop Fulfillment] sendBeacon delivery trigger failed:", error);
-  }
-
-  void fetch("/api/trigger-checkout-delivery", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: payload,
-    keepalive: true
-  }).catch((error) => {
-    console.warn("[PintDrop Fulfillment] Background delivery trigger failed:", error);
-  });
-}
-
 async function pollUntilCheckoutVoucher(sessionId) {
   const startedAt = Date.now();
   let lastResult = null;
 
-  while (Date.now() - startedAt < VOUCHER_POLL_HARD_CAP_MS) {
+  while (Date.now() - startedAt < VOUCHER_POLL_MAX_MS) {
     try {
-      lastResult = await Promise.race([
-        fetchCheckoutVoucher(sessionId),
-        sleep(FETCH_TIMEOUT_MS).then(() => {
-          throw new Error("Voucher request timed out.");
-        })
-      ]);
+      lastResult = await fetchCheckoutVoucher(sessionId);
       console.log("[PintDrop Fulfillment] Voucher poll attempt", {
         sessionId,
         hasVoucher: Boolean(lastResult?.voucher),
         elapsedMs: Date.now() - startedAt
       });
-      if (lastResult?.voucher?.code) {
+      if (lastResult?.voucher) {
         return lastResult;
       }
     } catch (error) {
       console.warn("[PintDrop Fulfillment] Voucher poll attempt failed:", error);
     }
-    await sleep(300);
+    await new Promise((resolve) => setTimeout(resolve, 350));
   }
 
   return lastResult;
 }
 
-function hideProcessingOverlay() {
-  $("processingOverlay")?.classList.add("hidden");
-  resetProcessingSteps();
-}
-
 function finishCheckoutSuccess(sessionId, voucher, delivery) {
-  hideProcessingOverlay();
-  setPurchaseStep("success");
+  const overlay = $("processingOverlay");
   showCheckoutSuccess(voucher, delivery);
   startDeliveryStatusPolling(sessionId, voucher);
+  overlay?.classList.add("hidden");
+  resetProcessingSteps();
+  setPurchaseStep("success");
   void renderPartner();
   renderSms();
   clearPendingOrderStorage();
@@ -1623,41 +1584,15 @@ async function completeCheckoutAfterPayment(sessionId) {
 
   const checkoutReturnStartedAt = performance.now();
   activeCheckoutSessionId = sessionId;
-  lastCheckoutFulfilledVoucher = null;
-  let finished = false;
-  let watchdogTimer = null;
-
-  const forceSuccessFromWatchdog = () => {
-    if (finished) return;
-    const voucher = lastCheckoutFulfilledVoucher;
-    if (!voucher?.code) return;
-    finished = true;
-    console.warn("[PintDrop Fulfillment] Forcing success screen from watchdog.", {
-      sessionId,
-      voucherCode: voucher.code
-    });
-    triggerCheckoutDeliveryFireAndForget(sessionId);
-    finishCheckoutSuccess(sessionId, voucher, {
-      sms: "pending",
-      senderEmail: "pending",
-      whatsapp: pendingOrder?.whatsappOptIn === false ? "skipped" : "pending"
-    });
-  };
-
-  watchdogTimer = setTimeout(forceSuccessFromWatchdog, CHECKOUT_OVERLAY_HARD_CAP_MS);
-
   console.log("[PintDrop Fulfillment] Return from Stripe", { sessionId });
 
   try {
     setProcessingStep(1);
+    await new Promise((resolve) => setTimeout(resolve, 200));
     setProcessingStep(2);
 
-    const fulfillment = await Promise.race([
-      pollUntilCheckoutVoucher(sessionId),
-      sleep(VOUCHER_POLL_HARD_CAP_MS).then(() => null)
-    ]);
-
-    if (!fulfillment?.voucher?.code) {
+    const fulfillment = await pollUntilCheckoutVoucher(sessionId);
+    if (!fulfillment?.voucher) {
       throw new Error(
         "Your payment was received, but your PintDrop is still being prepared. Please refresh this page in a moment."
       );
@@ -1667,9 +1602,9 @@ async function completeCheckoutAfterPayment(sessionId) {
     triggerCheckoutDeliveryFireAndForget(sessionId);
 
     setProcessingStep(3);
+    await new Promise((resolve) => setTimeout(resolve, SMS_STEP_MAX_MS));
     setProcessingStep(4);
 
-    finished = true;
     finishCheckoutSuccess(sessionId, fulfillment.voucher, {
       sms: "pending",
       senderEmail: "pending",
@@ -1683,7 +1618,8 @@ async function completeCheckoutAfterPayment(sessionId) {
     });
   } catch (error) {
     console.warn("[PintDrop Fulfillment] Checkout completion failed:", error);
-    hideProcessingOverlay();
+    overlay?.classList.add("hidden");
+    resetProcessingSteps();
     renderReview();
     setPurchaseStep("review");
     showStepError(
@@ -1692,8 +1628,6 @@ async function completeCheckoutAfterPayment(sessionId) {
     );
     throw error;
   } finally {
-    finished = true;
-    if (watchdogTimer) clearTimeout(watchdogTimer);
     paymentProcessing = false;
     if (button) button.disabled = false;
   }
@@ -1781,7 +1715,6 @@ function syncFulfilledVoucherToLocal(voucher) {
   vouchers.unshift(normalized);
   writeVouchers(vouchers);
   localStorage.setItem("pintdrop_last_voucher", normalized.id);
-  lastCheckoutFulfilledVoucher = normalized;
 }
 
 function savePendingOrderForStripe() {
