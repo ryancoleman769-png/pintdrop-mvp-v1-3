@@ -1369,7 +1369,34 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 #customer .recipient-form,
 #customer .payment-form {
   display: grid;
-  gap: 28px;
+  gap: 22px;
+}
+#customer .recipient-form-section {
+  display: grid;
+  gap: 16px;
+}
+#customer .recipient-form-section--sender {
+  margin-top: 4px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+#customer .recipient-form-section--summary {
+  padding-top: 4px;
+}
+#customer .recipient-subsection-heading {
+  margin: 0;
+  color: var(--green);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+#customer .recipient-fields,
+#customer .sender-fields {
+  gap: 16px;
+}
+#customer .sender-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 #customer .float-field {
   position: relative;
@@ -1503,34 +1530,34 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 #customer .order-summary-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  padding: 8px;
+  gap: 10px;
+  padding: 6px;
   border: 1px solid rgba(106, 203, 69, 0.18);
-  border-radius: 20px;
+  border-radius: 18px;
   background: linear-gradient(180deg, rgba(106, 203, 69, 0.08), rgba(106, 203, 69, 0.03));
 }
 #customer .summary-item {
-  padding: 18px 18px;
-  border-radius: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.03);
 }
 #customer .summary-item span {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 #customer .summary-item strong {
   display: block;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   line-height: 1.35;
 }
 #customer .summary-total strong {
   color: var(--green);
-  font-size: 1.15rem;
+  font-size: 1.08rem;
 }
 #customer .checkout-cta {
   min-height: 54px;
@@ -1672,8 +1699,13 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 @media (max-width: 780px) {
   #customer .field-grid,
   #customer .payment-row,
+  #customer .sender-fields,
   #customer .order-summary-strip {
     grid-template-columns: 1fr;
+  }
+  #customer .recipient-form-section--sender {
+    margin-top: 0;
+    padding-top: 20px;
   }
   #customer .float-field.phone-field .phone-country-select {
     min-width: 6.6rem;
