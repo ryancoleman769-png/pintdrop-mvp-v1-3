@@ -366,13 +366,54 @@
     </section>
 
     <section id="partner" class="view">
+      <div id="partnerAuthLoading" class="partner-auth-loading hidden" aria-live="polite">
+        <p>Checking partner session…</p>
+      </div>
+
+      <div id="partnerLogin" class="partner-login hidden">
+        <div class="partner-login-card card">
+          <img class="pintdrop-mark pintdrop-mark--partner-login" src="images/pintdrop-mark.png" alt="PintDrop" />
+          <h1 class="partner-login-title">Pub Partner Login</h1>
+          <p class="partner-login-lead">Sign in to your pub dashboard</p>
+          <form id="partnerLoginForm" class="partner-login-form">
+            <label class="field">
+              <span>Email</span>
+              <input id="partnerLoginEmail" type="email" name="email" autocomplete="username" required />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input id="partnerLoginPassword" type="password" name="password" autocomplete="current-password" required />
+            </label>
+            <p id="partnerLoginError" class="partner-login-error hidden" role="alert"></p>
+            <button id="partnerLoginBtn" type="submit" class="primary partner-login-submit">Log in</button>
+          </form>
+          <p class="partner-login-enquiry">
+            Interested in joining PintDrop?
+            <a href="mailto:hello@pintdrop.ie?subject=PintDrop%20Pub%20Partner%20Enquiry">Contact us</a>
+          </p>
+        </div>
+      </div>
+
+      <div id="partnerAccessDenied" class="partner-access-denied hidden">
+        <div class="partner-login-card card">
+          <img class="pintdrop-mark pintdrop-mark--partner-login" src="images/pintdrop-mark.png" alt="PintDrop" />
+          <h1 class="partner-login-title">Partner access unavailable</h1>
+          <p id="partnerAccessDeniedMessage" class="partner-login-lead">
+            This account is not linked to an active pub partner profile. Please contact PintDrop support.
+          </p>
+          <button id="partnerDeniedSignOutBtn" type="button" class="secondary partner-login-submit">Sign out</button>
+        </div>
+      </div>
+
+      <div id="partnerDashboard" class="partner-dashboard hidden">
       <header class="partner-pilot-header">
         <img class="pintdrop-mark pintdrop-mark--partner-pilot" src="images/pintdrop-mark.png" alt="PintDrop" />
         <div class="partner-pilot-heading">
-          <h1>O'Flaherty's Bar</h1>
+          <h1 id="partnerDashboardPubName">Pub Partner</h1>
           <p class="partner-pilot-badge">Pub Partner</p>
         </div>
-        <button id="resetDemo" class="partner-reset-btn" type="button" aria-label="Reset session" title="Reset session">↺</button>
+        <button id="partnerLogoutBtn" class="partner-logout-btn" type="button">Log out</button>
+        <button id="resetDemo" class="partner-reset-btn hidden" type="button" aria-label="Reset session" title="Reset session">↺</button>
       </header>
 
       <section class="card partner-payouts-card">
@@ -420,13 +461,14 @@
         </div>
         <div id="activityList" class="partner-redemption-list"></div>
       </section>
+      </div>
     </section>
 
     <section id="redemption" class="view">
       <div class="redemption-page">
         <header class="redemption-header">
           <img class="pintdrop-mark pintdrop-mark--redemption" src="images/pintdrop-mark.png" alt="PintDrop" />
-          <p class="redemption-pub-label">O'Flaherty's Bar · Pub Partner</p>
+          <p id="redemptionPubLabel" class="redemption-pub-label">Pub Partner</p>
         </header>
 
         <div id="redemptionAlreadyBanner" class="redemption-already-banner hidden" role="status">
@@ -518,7 +560,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260811-async-fulfill1"></script>
-  <script src="app.js?v=20260812-pilot-qty1"></script>
+  <script src="supabase-config.js?v=20260812-partner-auth"></script>
+  <script src="app.js?v=20260812-partner-login"></script>
 </body>
 </html>

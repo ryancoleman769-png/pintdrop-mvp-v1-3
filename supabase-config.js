@@ -68,10 +68,16 @@ function resolvePubSlug(row) {
     .slice(0, 32) || `pub-${row.id}`;
 }
 
+function isCustomerReadyPubRow(row) {
+  const active = row.active !== false && row.active !== 0;
+  const status = String(row.onboarding_status || "approved").trim().toLowerCase();
+  return active && status === "approved";
+}
+
 function mapSupabasePubRow(row) {
   const id = resolvePubSlug(row);
   const assets = PUB_LOCAL_ASSETS[id] || {};
-  const participatingValue = row.participating ?? row.is_active ?? row.active ?? true;
+  const customerReady = isCustomerReadyPubRow(row);
 
   return {
     id,
@@ -80,7 +86,7 @@ function mapSupabasePubRow(row) {
     town: row.town || row.city || row.location || "",
     icon: row.icon || assets.icon || "🍺",
     image: row.image_url || row.image || assets.image || null,
-    participating: participatingValue !== false && participatingValue !== 0,
+    participating: customerReady,
     source: "supabase"
   };
 }
@@ -92,6 +98,8 @@ async function fetchPubsFromSupabase() {
   const { data, error } = await client
     .from("pubs")
     .select("*")
+    .eq("active", true)
+    .eq("onboarding_status", "approved")
     .order("name", { ascending: true });
 
   if (error) {
@@ -99,7 +107,9 @@ async function fetchPubsFromSupabase() {
     return null;
   }
 
-  return (data || []).map(mapSupabasePubRow);
+  return (data || [])
+    .filter(isCustomerReadyPubRow)
+    .map(mapSupabasePubRow);
 }
 
 window.PintDropSupabase.fetchPubs = fetchPubsFromSupabase;
@@ -600,3 +610,161 @@ async function sendRecipientGiftFromEdge(voucher, recipientEmail) {
 }
 
 window.PintDropSupabase.sendRecipientGiftEmail = sendRecipientGiftFromEdge;
+
+// ===== Partner Auth (Phase 1+2 foundation — not wired to dashboard UI yet) =====
+// Requires partner-auth-migration.sql applied in Supabase before these RPCs exist.
+// Legacy pilot flows (list_vouchers_by_pub, redeem_voucher, etc.) remain in app.js.
+
+async function signInPartner(email, password) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedPassword = String(password || "");
+
+  if (!normalizedEmail || !normalizedPassword) {
+    return { ok: false, error: "Email and password are required." };
+  }
+
+  const { data, error } = await client.auth.signInWithPassword({
+    email: normalizedEmail,
+    password: normalizedPassword
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Auth] sign in failed:", error.message);
+    return { ok: false, error: error.message || "Sign in failed." };
+  }
+
+  return { ok: true, session: data.session, user: data.user };
+}
+
+async function signOutPartner() {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  const { error } = await client.auth.signOut();
+  if (error) {
+    console.warn("[PintDrop Partner Auth] sign out failed:", error.message);
+    return { ok: false, error: error.message || "Sign out failed." };
+  }
+
+  return { ok: true };
+}
+
+async function getPartnerSession() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const { data, error } = await client.auth.getSession();
+  if (error) {
+    console.warn("[PintDrop Partner Auth] getSession failed:", error.message);
+    return null;
+  }
+
+  return data.session || null;
+}
+
+function onPartnerAuthStateChange(callback) {
+  const client = getSupabaseClient();
+  if (!client || typeof callback !== "function") {
+    return () => {};
+  }
+
+  const { data } = client.auth.onAuthStateChange((_event, session) => {
+    callback(session);
+  });
+
+  return () => {
+    data?.subscription?.unsubscribe?.();
+  };
+}
+
+async function fetchMyPartnerProfileFromSupabase() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const { data, error } = await client.rpc("get_my_partner_profile");
+  if (error) {
+    console.warn("[PintDrop Partner Auth] profile fetch failed:", error.message);
+    return null;
+  }
+
+  return data || null;
+}
+
+async function fetchMyPubVouchersFromSupabase() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const { data, error } = await client.rpc("list_my_pub_vouchers");
+  if (error) {
+    console.warn("[PintDrop Partner Auth] voucher list failed:", error.message);
+    return null;
+  }
+
+  const rows = Array.isArray(data) ? data : (data ? [data] : []);
+  return rows.map(mapSupabaseVoucherRow).filter(Boolean);
+}
+
+async function fetchVoucherForPartnerRedemptionFromSupabase(code) {
+  const client = getSupabaseClient();
+  if (!client || !code?.trim()) return null;
+
+  const { data, error } = await client.rpc("get_voucher_for_partner_redemption", {
+    p_code: code.trim()
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Auth] partner voucher lookup failed:", error.message);
+    return null;
+  }
+
+  return mapSupabaseVoucherRow(data);
+}
+
+async function redeemVoucherForPartnerInSupabase({ id, code } = {}) {
+  const client = getSupabaseClient();
+  if (!client || (!id && !code)) return null;
+
+  const { data, error } = await client.rpc("redeem_voucher_for_partner", {
+    p_id: id || null,
+    p_code: code || null
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Auth] partner redeem failed:", error.message);
+    return null;
+  }
+
+  return mapSupabaseVoucherRow(data);
+}
+
+async function fetchMyPubStripeConnectFromSupabase() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const { data, error } = await client.rpc("get_my_pub_stripe_connect");
+  if (error) {
+    console.warn("[PintDrop Partner Auth] stripe connect fetch failed:", error.message);
+    return null;
+  }
+
+  return data || null;
+}
+
+window.PintDropSupabase.PartnerAuth = {
+  signIn: signInPartner,
+  signOut: signOutPartner,
+  getSession: getPartnerSession,
+  onAuthStateChange: onPartnerAuthStateChange,
+  fetchProfile: fetchMyPartnerProfileFromSupabase,
+  fetchVouchers: fetchMyPubVouchersFromSupabase,
+  fetchVoucherForRedemption: fetchVoucherForPartnerRedemptionFromSupabase,
+  redeemVoucher: redeemVoucherForPartnerInSupabase,
+  fetchStripeConnect: fetchMyPubStripeConnectFromSupabase
+};

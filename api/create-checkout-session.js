@@ -59,6 +59,32 @@ async function loadPubConnectState(pubId) {
   }
 }
 
+async function loadPubCheckoutEligibility(pubId) {
+  if (!Number.isFinite(pubId) || pubId <= 0) {
+    return null;
+  }
+
+  const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (!serviceRoleKey) {
+    return null;
+  }
+
+  try {
+    return await supabaseRpc("get_pub_checkout_eligibility", { p_pub_id: pubId });
+  } catch (error) {
+    console.warn("[create-checkout-session] Pub eligibility lookup failed:", error);
+    return null;
+  }
+}
+
+function isPubAvailableForCheckout(pub) {
+  if (!pub) return false;
+  if (pub.customer_ready === true) return true;
+  const active = pub.active === true;
+  const approved = String(pub.onboarding_status || "").trim().toLowerCase() === "approved";
+  return active && approved;
+}
+
 async function resolveConnectAccountId(stripe, pub) {
   if (!pub?.stripe_account_id) {
     return { accountId: null, skipReason: "no_stripe_account" };
@@ -155,6 +181,17 @@ module.exports = async function handler(req, res) {
 
     if (!Number.isFinite(pubId) || pubId <= 0) {
       res.status(400).json({ ok: false, error: "pubId is required." });
+      return;
+    }
+
+    const pubEligibility = await loadPubCheckoutEligibility(pubId);
+    if (!pubEligibility) {
+      res.status(404).json({ ok: false, error: "Pub not found." });
+      return;
+    }
+
+    if (!isPubAvailableForCheckout(pubEligibility)) {
+      res.status(403).json({ ok: false, error: "This pub is not available for checkout." });
       return;
     }
 

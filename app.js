@@ -243,6 +243,10 @@ const PARTNER_DEMO_SEED_KEY = "pintdrop_partner_demo_seeded";
 
 let partnerVouchers = null;
 let publicVoucherDisplay = null;
+let partnerSession = null;
+let partnerProfile = null;
+let partnerAuthReady = false;
+let partnerAuthUnsubscribe = null;
 let partnerQrScanActive = false;
 let partnerQrScanHandling = false;
 let partnerQrScanFrameId = null;
@@ -327,6 +331,184 @@ function partnerPub() {
 
 function isPartnerVoucher(voucher) {
   return voucher?.pub?.id === PARTNER_PUB_ID;
+}
+
+function getPartnerAuthApi() {
+  return window.PintDropSupabase?.PartnerAuth || null;
+}
+
+function hasActivePartnerProfile() {
+  // Partner access = authenticated session + active pub_partner_users mapping (RPC returns pub_id).
+  // profile.active is pubs.active (customer go-live) — must not block partner dashboard access.
+  return Boolean(
+    partnerSession
+    && partnerProfile
+    && Number.isFinite(Number(partnerProfile.pub_id))
+    && Number(partnerProfile.pub_id) > 0
+  );
+}
+
+function getAuthenticatedPartnerPubId() {
+  if (!hasActivePartnerProfile()) return null;
+  return Number(partnerProfile.pub_id);
+}
+
+function isVoucherForAuthenticatedPartner(voucher) {
+  if (!voucher?.pub || !hasActivePartnerProfile()) return false;
+  const partnerPubId = getAuthenticatedPartnerPubId();
+  if (voucher.pub.supabaseId === partnerPubId) return true;
+  return false;
+}
+
+function setPartnerPanelVisibility({ loading = false, login = false, denied = false, dashboard = false } = {}) {
+  $("partnerAuthLoading")?.classList.toggle("hidden", !loading);
+  $("partnerLogin")?.classList.toggle("hidden", !login);
+  $("partnerAccessDenied")?.classList.toggle("hidden", !denied);
+  $("partnerDashboard")?.classList.toggle("hidden", !dashboard);
+  document.body.classList.toggle("partner-login-active", login || denied || loading);
+}
+
+function clearPartnerSessionState() {
+  partnerSession = null;
+  partnerProfile = null;
+  partnerVouchers = null;
+}
+
+async function applyPartnerSession(session) {
+  partnerSession = session || null;
+  partnerProfile = null;
+
+  if (!partnerSession) {
+    clearPartnerSessionState();
+    return "logged_out";
+  }
+
+  const auth = getPartnerAuthApi();
+  if (!auth?.fetchProfile) {
+    clearPartnerSessionState();
+    return "denied";
+  }
+
+  const profile = await auth.fetchProfile();
+  if (!profile?.pub_id) {
+    partnerProfile = null;
+    partnerVouchers = null;
+    return "denied";
+  }
+
+  partnerProfile = profile;
+  partnerVouchers = null;
+  return "logged_in";
+}
+
+async function ensurePartnerAuthReady() {
+  if (partnerAuthReady) return;
+  await initPartnerAuth();
+}
+
+async function initPartnerAuth() {
+  if (partnerAuthReady) return;
+
+  const auth = getPartnerAuthApi();
+  if (!auth) {
+    partnerAuthReady = true;
+    return;
+  }
+
+  if (!partnerAuthUnsubscribe) {
+    partnerAuthUnsubscribe = auth.onAuthStateChange(async (session) => {
+      await applyPartnerSession(session);
+      if ($("partner")?.classList.contains("active")) {
+        void renderPartner();
+      }
+    });
+  }
+
+  const session = await auth.getSession();
+  await applyPartnerSession(session);
+  partnerAuthReady = true;
+}
+
+async function handlePartnerLoginSubmit(event) {
+  event.preventDefault();
+
+  const auth = getPartnerAuthApi();
+  const email = $("partnerLoginEmail")?.value || "";
+  const password = $("partnerLoginPassword")?.value || "";
+  const errorEl = $("partnerLoginError");
+  const submitBtn = $("partnerLoginBtn");
+
+  if (errorEl) {
+    errorEl.classList.add("hidden");
+    errorEl.textContent = "";
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Signing in…";
+  }
+
+  if (!auth?.signIn) {
+    if (errorEl) {
+      errorEl.textContent = "Partner login is not available.";
+      errorEl.classList.remove("hidden");
+    }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Log in";
+    }
+    return;
+  }
+
+  const result = await auth.signIn(email, password);
+  const state = await applyPartnerSession(result.ok ? result.session : null);
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Log in";
+  }
+
+  if (!result.ok) {
+    if (errorEl) {
+      errorEl.textContent = result.error || "Sign in failed. Check your email and password.";
+      errorEl.classList.remove("hidden");
+    }
+    void renderPartner();
+    return;
+  }
+
+  if (state === "denied") {
+    void renderPartner();
+    return;
+  }
+
+  void renderPartner();
+}
+
+async function handlePartnerLogout() {
+  const auth = getPartnerAuthApi();
+  if (auth?.signOut) {
+    await auth.signOut();
+  }
+  clearPartnerSessionState();
+  await stopPartnerQrScan();
+  $("redeemResult").innerHTML = "";
+  void renderPartner();
+}
+
+function updatePartnerDashboardHeading() {
+  const heading = $("partnerDashboardPubName");
+  if (!heading) return;
+  heading.textContent = partnerProfile?.pub_name || "Pub Partner";
+}
+
+function getPartnerPeriodSummaryLabel(period) {
+  const pubName = partnerProfile?.pub_name || "your pub";
+  const labels = {
+    today: `Today at ${pubName}`,
+    week: `This week at ${pubName}`,
+    month: `This month at ${pubName}`
+  };
+  return labels[period] || labels.week;
 }
 
 function getVoucherActivityTime(voucher) {
@@ -532,29 +714,25 @@ function getPartnerVouchers() {
 }
 
 async function loadPartnerVouchers() {
-  const local = readVouchers().filter(isPartnerVoucher);
-
-  if (!window.PintDropSupabase?.isConfigured?.()) {
-    partnerVouchers = local;
-    return partnerVouchers;
-  }
-
-  try {
-    const remote = await window.PintDropSupabase.fetchPartnerVouchers(PARTNER_SUPABASE_PUB_ID);
-    if (!remote?.length) {
-      partnerVouchers = local;
+  if (hasActivePartnerProfile()) {
+    const auth = getPartnerAuthApi();
+    if (!auth?.fetchVouchers) {
+      partnerVouchers = [];
       return partnerVouchers;
     }
 
-    const remoteByCode = new Map(remote.map(voucher => [voucher.code.toUpperCase(), voucher]));
-    const demoOnly = local.filter(voucher => !remoteByCode.has(voucher.code.toUpperCase()));
-    partnerVouchers = [...remote, ...demoOnly]
-      .sort((a, b) => new Date(getVoucherActivityTime(b)) - new Date(getVoucherActivityTime(a)));
-  } catch (error) {
-    console.warn("[PintDrop] Using local partner vouchers after Supabase error:", error);
-    partnerVouchers = local;
+    try {
+      const remote = await auth.fetchVouchers();
+      partnerVouchers = Array.isArray(remote) ? remote : [];
+    } catch (error) {
+      console.warn("[PintDrop Partner Auth] Voucher list failed:", error);
+      partnerVouchers = [];
+    }
+
+    return partnerVouchers;
   }
 
+  partnerVouchers = [];
   return partnerVouchers;
 }
 
@@ -1023,6 +1201,21 @@ function switchView(view) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+async function findPartnerVoucherByCode(code) {
+  const normalized = (code || "").trim();
+  if (!normalized || !hasActivePartnerProfile()) return null;
+
+  const auth = getPartnerAuthApi();
+  if (!auth?.fetchVoucherForRedemption) return null;
+
+  try {
+    return await auth.fetchVoucherForRedemption(normalized);
+  } catch (error) {
+    console.warn("[PintDrop Partner Auth] Voucher lookup failed:", error);
+    return null;
+  }
+}
+
 async function findVoucherByCode(code) {
   const normalized = (code || "").trim().toUpperCase();
   if (!normalized) return null;
@@ -1134,8 +1327,14 @@ async function openRecipientVoucherView(code, { updateHash = true } = {}) {
 
 async function processBarRedemption(code, { updateHash = true } = {}) {
   dismissSplash();
-  const voucher = await findVoucherByCode(code);
   redemptionJustConfirmed = false;
+
+  let voucher = null;
+  if (hasActivePartnerProfile()) {
+    voucher = await findPartnerVoucherByCode(code);
+  } else {
+    voucher = await findVoucherByCode(code);
+  }
 
   if (!voucher) {
     activeRedemptionVoucherId = null;
@@ -1146,7 +1345,16 @@ async function processBarRedemption(code, { updateHash = true } = {}) {
     return;
   }
 
-  if (!isVoucherForPartnerPub(voucher)) {
+  if (hasActivePartnerProfile()) {
+    if (!isVoucherForAuthenticatedPartner(voucher)) {
+      activeRedemptionVoucherId = null;
+      activeRedemptionVoucher = null;
+      if (updateHash) setBarRedemptionHash(voucher.code);
+      switchView("redemption");
+      renderRedemptionWrongPub(voucher);
+      return;
+    }
+  } else if (!isVoucherForPartnerPub(voucher)) {
     activeRedemptionVoucherId = null;
     activeRedemptionVoucher = null;
     if (updateHash) setBarRedemptionHash(voucher.code);
@@ -1175,7 +1383,9 @@ async function processBarRedemption(code, { updateHash = true } = {}) {
   redemptionJustConfirmed = true;
   partnerVouchers = null;
   renderRedemptionScreen(redeemed, { barMode: true });
-  await renderPartner();
+  if ($("partner")?.classList.contains("active")) {
+    await renderPartner();
+  }
   renderVoucher();
   renderSms();
   showSenderNotification(redeemed);
@@ -1459,7 +1669,7 @@ function renderRedemptionWrongPub(voucher) {
     ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-actions"
   ).forEach(el => el.classList.add("hidden"));
   $("redemptionEmptyMessage").textContent =
-    `This voucher is for ${voucher.pub.name}, not O'Flaherty's Bar.`;
+    `This voucher is for ${voucher.pub.name}, not your pub.`;
   $("redemptionEmpty")?.classList.remove("hidden");
   $("redemptionConfirm")?.classList.add("hidden");
 }
@@ -1472,6 +1682,10 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
 
   const isRedeemed = voucher.status === "redeemed";
   const giftLabel = getVoucherGiftLabel(voucher);
+  const pubLabel = $("redemptionPubLabel");
+  if (pubLabel) {
+    pubLabel.textContent = `${voucher.pub.name} · Pub Partner`;
+  }
 
   $("redemptionGift").textContent = `${voucher.gift.icon} ${giftLabel}`;
   $("redemptionPub").textContent = `${voucher.pub.name}, ${voucher.pub.town}`;
@@ -1537,6 +1751,31 @@ async function redeemVoucherById(voucherId) {
   const vouchers = readVouchers();
   const local = vouchers.find(v => v.id === voucherId);
   const lookupCode = local?.code || activeRedemptionVoucher?.code;
+
+  if (hasActivePartnerProfile()) {
+    const auth = getPartnerAuthApi();
+    if (auth?.redeemVoucher) {
+      try {
+        const remote = await auth.redeemVoucher({
+          id: voucherId,
+          code: lookupCode
+        });
+        if (remote) {
+          if (local) {
+            local.status = "redeemed";
+            local.redeemedAt = remote.redeemedAt;
+            writeVouchers(vouchers);
+          }
+          return remote;
+        }
+        if (remote === null && !local) {
+          return null;
+        }
+      } catch (error) {
+        console.warn("[PintDrop Partner Auth] Voucher redeem error:", error);
+      }
+    }
+  }
 
   if (window.PintDropSupabase?.isConfigured?.()) {
     try {
@@ -2570,13 +2809,42 @@ function computePeriodSummary(vouchers, period) {
 
 async function refreshPartnerPayoutStatus() {
   const status = $("stripeConnectStatus");
-  if (!status) return;
+  if (!status || !hasActivePartnerProfile()) return;
+
+  const auth = getPartnerAuthApi();
+  if (auth?.fetchStripeConnect) {
+    try {
+      const data = await auth.fetchStripeConnect();
+      if (data) {
+        if (data.stripe_payouts_ready === true) {
+          status.textContent = "Payout setup: Payouts ready";
+          setPartnerPayoutsAction(true);
+          return;
+        }
+
+        setPartnerPayoutsAction(false);
+
+        if (data.stripe_onboarding_status === "not_started") {
+          status.textContent = "Payout setup: Not started";
+          return;
+        }
+
+        status.textContent = "Payout setup: Setup incomplete";
+        return;
+      }
+    } catch (error) {
+      console.warn("[PintDrop Partner Auth] Stripe connect fetch failed:", error);
+    }
+  }
+
+  const pubId = getAuthenticatedPartnerPubId();
+  if (!pubId) return;
 
   try {
     const response = await fetch("/api/stripe-connect/account-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pubId: PARTNER_SUPABASE_PUB_ID })
+      body: JSON.stringify({ pubId })
     });
 
     let data = {};
@@ -2628,7 +2896,10 @@ function setPartnerPayoutsAction(ready) {
 async function startPartnerPayoutSetup() {
   const button = $("setupPayoutsBtn");
   const status = $("stripeConnectStatus");
-  if (!button || button.disabled) return;
+  if (!button || button.disabled || !hasActivePartnerProfile()) return;
+
+  const pubId = getAuthenticatedPartnerPubId();
+  if (!pubId) return;
 
   button.disabled = true;
   if (status) status.textContent = "Opening Stripe payout setup…";
@@ -2637,7 +2908,7 @@ async function startPartnerPayoutSetup() {
     const response = await fetch("/api/stripe-connect/account-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pubId: PARTNER_SUPABASE_PUB_ID })
+      body: JSON.stringify({ pubId })
     });
 
     let data = {};
@@ -2662,6 +2933,35 @@ async function startPartnerPayoutSetup() {
 }
 
 async function renderPartner() {
+  await ensurePartnerAuthReady();
+
+  if (!getPartnerAuthApi()) {
+    setPartnerPanelVisibility({ login: true });
+    if ($("partnerLoginError")) {
+      $("partnerLoginError").textContent = "Partner login is not configured.";
+      $("partnerLoginError").classList.remove("hidden");
+    }
+    return;
+  }
+
+  if (!partnerAuthReady) {
+    setPartnerPanelVisibility({ loading: true });
+    return;
+  }
+
+  if (!partnerSession) {
+    setPartnerPanelVisibility({ login: true });
+    return;
+  }
+
+  if (!hasActivePartnerProfile()) {
+    setPartnerPanelVisibility({ denied: true });
+    return;
+  }
+
+  setPartnerPanelVisibility({ dashboard: true });
+  updatePartnerDashboardHeading();
+
   await loadPartnerVouchers();
   const vouchers = getPartnerVouchers();
 
@@ -2879,6 +3179,15 @@ async function resetDemoState() {
 }
 
 $("resetDemo").addEventListener("click", resetDemoState);
+$("partnerLoginForm")?.addEventListener("submit", (event) => {
+  void handlePartnerLoginSubmit(event);
+});
+$("partnerLogoutBtn")?.addEventListener("click", () => {
+  void handlePartnerLogout();
+});
+$("partnerDeniedSignOutBtn")?.addEventListener("click", () => {
+  void handlePartnerLogout();
+});
 $("setupPayoutsBtn")?.addEventListener("click", () => {
   void startPartnerPayoutSetup();
 });
@@ -2911,11 +3220,17 @@ if (sessionStorage.getItem("pintdrop_splash_seen")) {
   seedPartnerDemoData();
   await applyDemoDefaults();
   $("pubSearch")?.addEventListener("input", (event) => filterPubList(event.target.value));
-  await renderPartner();
+  await initPartnerAuth();
   renderSms();
 
   const handledStripeReturn = await handleStripeReturn();
   if (handledStripeReturn) return;
+
+  const params = new URLSearchParams(location.search);
+  if (params.get("view") === "partner") {
+    dismissSplash();
+    switchView("partner");
+  }
 
   const initialRoute = parseRedeemRoute();
   if (initialRoute?.code) {
