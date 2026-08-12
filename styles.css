@@ -1368,11 +1368,11 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
-  min-height: 196px;
+  min-height: 0;
   padding: 16px 14px 14px;
-  cursor: default;
+  cursor: pointer;
   overflow: visible;
 }
 #customer .drink-qty-card:hover {

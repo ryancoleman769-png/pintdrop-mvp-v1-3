@@ -50,7 +50,6 @@ const DEMO_GIFTS = [
 
 const PURCHASE_HIDDEN_DRINK_IDS = new Set(["soft"]);
 const BAR_TAB_DRINK_ID = "tab";
-const MAX_DRINK_QUANTITY = 20;
 
 let gifts = DEMO_GIFTS.map(gift => ({ ...gift }));
 
@@ -67,11 +66,11 @@ function getBarTabGift() {
 }
 
 let orderMode = "drinks";
-let drinkQuantities = {};
+let selectedDrinkId = null;
 
 function resetBasket() {
   orderMode = "drinks";
-  drinkQuantities = {};
+  selectedDrinkId = null;
 }
 
 function roundMoney(value) {
@@ -123,32 +122,27 @@ function getBasketLineItems() {
     }];
   }
 
-  return getMenuDrinks()
-    .map(gift => {
-      const quantity = Number(drinkQuantities[gift.id] || 0);
-      if (quantity <= 0) return null;
-      const drinkId = getCheckoutDrinkId(gift, selectedPub);
-      if (!drinkId) return null;
-      return {
-        drinkId,
-        slug: gift.id,
-        name: gift.name,
-        icon: gift.icon,
-        unitPrice: gift.price,
-        quantity,
-        lineSubtotal: roundMoney(gift.price * quantity)
-      };
-    })
-    .filter(Boolean);
+  if (!selectedDrinkId) return [];
+
+  const gift = getMenuDrinks().find(item => item.id === selectedDrinkId);
+  if (!gift) return [];
+
+  const drinkId = getCheckoutDrinkId(gift, selectedPub);
+  if (!drinkId) return [];
+
+  return [{
+    drinkId,
+    slug: gift.id,
+    name: gift.name,
+    icon: gift.icon,
+    unitPrice: gift.price,
+    quantity: 1,
+    lineSubtotal: roundMoney(gift.price)
+  }];
 }
 
-function setDrinkQuantity(giftId, nextQuantity) {
-  const quantity = Math.max(0, Math.min(MAX_DRINK_QUANTITY, Number(nextQuantity) || 0));
-  if (quantity <= 0) {
-    delete drinkQuantities[giftId];
-  } else {
-    drinkQuantities[giftId] = quantity;
-  }
+function selectDrink(giftId) {
+  selectedDrinkId = giftId;
   orderMode = "drinks";
   renderChoices();
   renderSummary();
@@ -157,7 +151,7 @@ function setDrinkQuantity(giftId, nextQuantity) {
 
 function selectBarTab() {
   orderMode = "tab";
-  drinkQuantities = {};
+  selectedDrinkId = null;
   renderChoices();
   renderSummary();
   $("giftStepError")?.classList.add("hidden");
@@ -184,19 +178,11 @@ async function loadGiftsForPub(pub) {
 }
 
 function ensureBasketValid() {
-  Object.keys(drinkQuantities).forEach(giftId => {
-    if (!gifts.some(gift => gift.id === giftId)) {
-      delete drinkQuantities[giftId];
-    }
-  });
+  if (selectedDrinkId && !gifts.some(gift => gift.id === selectedDrinkId)) {
+    selectedDrinkId = null;
+  }
   if (orderMode === "tab" && !getBarTabGift()) {
     orderMode = "drinks";
-  }
-  if (orderMode === "drinks" && !getBasketLineItems().length) {
-    const firstMenuDrink = getMenuDrinks()[0];
-    if (firstMenuDrink && !Object.keys(drinkQuantities).length) {
-      drinkQuantities[firstMenuDrink.id] = 1;
-    }
   }
 }
 
@@ -891,23 +877,17 @@ function renderChoices() {
   }).join("");
 
   $("menuDrinkList").innerHTML = getMenuDrinks().map(gift => {
-    const quantity = Number(drinkQuantities[gift.id] || 0);
-    const selected = orderMode === "drinks" && quantity > 0;
+    const selected = orderMode === "drinks" && selectedDrinkId === gift.id;
     return `
-    <div class="gift-card drink-qty-card ${selected ? "selected" : ""}" data-gift="${gift.id}">
+    <button type="button" class="gift-card drink-qty-card ${selected ? "selected" : ""}" data-gift-select="${gift.id}">
       <div class="drink-qty-card-top">
         <span class="gift-card-icon">${gift.icon}</span>
         <div class="gift-card-body">
           <strong>${gift.name}</strong>
-          <small>${money(gift.price)} each</small>
+          <small>${money(gift.price)}</small>
         </div>
       </div>
-      <div class="qty-stepper" role="group" aria-label="${gift.name} quantity">
-        <button type="button" class="qty-btn" data-qty-action="decrease" data-gift="${gift.id}" aria-label="Decrease ${gift.name}">−</button>
-        <span class="qty-value" aria-live="polite">${quantity}</span>
-        <button type="button" class="qty-btn" data-qty-action="increase" data-gift="${gift.id}" aria-label="Increase ${gift.name}">+</button>
-      </div>
-    </div>
+    </button>
   `;
   }).join("");
 
@@ -979,13 +959,9 @@ function renderChoices() {
     };
   });
 
-  document.querySelectorAll("[data-qty-action]").forEach(btn => {
-    btn.onclick = (event) => {
-      event.stopPropagation();
-      const giftId = btn.dataset.gift;
-      const current = Number(drinkQuantities[giftId] || 0);
-      const next = btn.dataset.qtyAction === "increase" ? current + 1 : current - 1;
-      setDrinkQuantity(giftId, next);
+  document.querySelectorAll("[data-gift-select]").forEach(btn => {
+    btn.onclick = () => {
+      selectDrink(btn.dataset.giftSelect);
     };
   });
 
