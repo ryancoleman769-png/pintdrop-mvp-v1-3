@@ -1595,7 +1595,32 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 #customer .recipient-form,
 #customer .payment-form {
   display: grid;
-  gap: 28px;
+  gap: 20px;
+}
+#customer .recipient-form-section {
+  display: grid;
+  gap: 14px;
+}
+#customer .recipient-form-section--sender {
+  margin-top: 4px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+#customer .recipient-form-section-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#customer .recipient-fields {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+#customer .sender-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 #customer .float-field {
   position: relative;
@@ -1618,7 +1643,8 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   padding-top: 32px;
 }
 #customer .float-field.message-field textarea {
-  padding-top: 18px;
+  min-height: 112px;
+  padding-top: 32px;
 }
 #customer .float-field.message-field textarea::placeholder {
   color: var(--muted);
@@ -1734,6 +1760,24 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   border: 1px solid rgba(106, 203, 69, 0.18);
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(106, 203, 69, 0.08), rgba(106, 203, 69, 0.03));
+}
+#customer .order-summary-strip--compact {
+  gap: 8px;
+  padding: 12px;
+  margin-top: 4px;
+}
+#customer .order-summary-strip--compact .summary-item {
+  padding: 12px 14px;
+}
+#customer .order-summary-strip--compact .summary-item span {
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+}
+#customer .order-summary-strip--compact .summary-item strong {
+  font-size: 0.9rem;
+}
+#customer .order-summary-strip--compact .summary-total strong {
+  font-size: 1.08rem;
 }
 #customer .summary-item {
   padding: 18px 18px;
@@ -1899,6 +1943,9 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   #customer .field-grid,
   #customer .payment-row,
   #customer .order-summary-strip {
+    grid-template-columns: 1fr;
+  }
+  #customer .sender-fields {
     grid-template-columns: 1fr;
   }
   #customer .float-field.phone-field .phone-country-select {

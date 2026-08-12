@@ -1017,9 +1017,7 @@ function renderSummary() {
     $("summaryPrice").textContent = money(0);
     return;
   }
-  const summaryLabel = lineItems.length === 1 && lineItems[0].quantity === 1
-    ? lineItems[0].name
-    : formatOrderSummary(lineItems);
+  const summaryLabel = formatOrderSummary(lineItems);
   $("summaryGift").textContent = summaryLabel;
   $("summaryPrice").textContent = money(calculateBasketTotalsFromLineItems(lineItems).total);
 }
