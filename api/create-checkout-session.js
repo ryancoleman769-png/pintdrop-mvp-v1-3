@@ -1,6 +1,5 @@
-const Stripe = require("stripe");
 const { calculateServiceFee, calculateOrderTotal } = require("./_lib/pricing");
-const { supabaseRpc } = require("./_lib/connect-helpers");
+const { createStripeClient, supabaseRpc } = require("./_lib/connect-helpers");
 const { buildCheckoutMetadata } = require("./_lib/fulfillment");
 
 function getRequestOrigin(req) {
@@ -88,14 +87,9 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) {
-    res.status(500).json({ ok: false, error: "Stripe is not configured on the server." });
-    return;
-  }
-
-  if (!secretKey.startsWith("sk_test_")) {
-    res.status(500).json({ ok: false, error: "Stripe test mode only. Use a sk_test_ key." });
+  const stripeResult = createStripeClient();
+  if (stripeResult.error) {
+    res.status(500).json({ ok: false, error: stripeResult.error });
     return;
   }
 
@@ -154,7 +148,7 @@ module.exports = async function handler(req, res) {
     const amountCents = Math.round(parsedTotal * 100);
     const feeCents = Math.round(parsedFee * 100);
     const origin = getRequestOrigin(req);
-    const stripe = new Stripe(secretKey);
+    const stripe = stripeResult.stripe;
 
     const description = pubName
       ? "PintDrop at " + pubName
