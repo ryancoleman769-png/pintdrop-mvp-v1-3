@@ -70,15 +70,45 @@ function getStripeSecretKey() {
   return String(process.env.STRIPE_SECRET_KEY || "").trim();
 }
 
-function createStripeClient() {
+function isProductionEnv(vercelEnv = process.env.VERCEL_ENV) {
+  return String(vercelEnv || "").trim() === "production";
+}
+
+function getStripeSecretKeyError(secretKey, vercelEnv = process.env.VERCEL_ENV) {
+  const key = String(secretKey || "").trim();
+  if (!key) {
+    return "Stripe is not configured on the server.";
+  }
+
+  if (isProductionEnv(vercelEnv)) {
+    if (!key.startsWith("sk_live_")) {
+      return "Stripe live mode required in Production. Use a sk_live_ key.";
+    }
+    return null;
+  }
+
+  if (!key.startsWith("sk_test_")) {
+    return "Stripe test mode only outside Production. Use a sk_test_ key.";
+  }
+
+  return null;
+}
+
+function resolveStripeSecretKey() {
   const secretKey = getStripeSecretKey();
-  if (!secretKey) {
-    return { error: "Stripe is not configured on the server." };
+  const error = getStripeSecretKeyError(secretKey);
+  if (error) {
+    return { error };
   }
-  if (!secretKey.startsWith("sk_test_")) {
-    return { error: "Stripe test mode only. Use a sk_test_ key." };
+  return { secretKey };
+}
+
+function createStripeClient() {
+  const resolved = resolveStripeSecretKey();
+  if (resolved.error) {
+    return { error: resolved.error };
   }
-  return { stripe: new Stripe(secretKey) };
+  return { stripe: new Stripe(resolved.secretKey) };
 }
 
 function getSupabaseUrl() {
@@ -266,6 +296,8 @@ module.exports = {
   sendJson,
   handleOptions,
   requirePost,
+  getStripeSecretKeyError,
+  resolveStripeSecretKey,
   createStripeClient,
   getSupabaseUrl,
   getSupabaseServiceRoleKey,
