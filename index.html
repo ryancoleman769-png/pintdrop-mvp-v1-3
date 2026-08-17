@@ -98,42 +98,50 @@
             </div>
           </div>
           <form id="orderForm" class="recipient-form">
-            <div class="field-grid">
-              <label class="float-field">
-                <input id="recipientName" required placeholder=" " autocomplete="name" value="Dad" />
-                <span>Recipient name</span>
-              </label>
+            <div class="form-section">
+              <h3 class="form-section-title">Recipient details</h3>
+              <div class="field-grid">
+                <label class="float-field full">
+                  <input id="recipientName" required placeholder=" " autocomplete="name" />
+                  <span>Recipient name</span>
+                </label>
 
-              <label class="float-field phone-field full">
-                <div class="phone-input-row">
-                  <select id="recipientPhoneCountry" class="phone-country-select" aria-label="Country code">
-                    <option value="IE" selected>🇮🇪 +353</option>
-                    <option value="GB">🇬🇧 +44</option>
-                  </select>
-                  <input id="recipientPhone" required placeholder=" " inputmode="tel" autocomplete="tel-national" value="087 123 4567" />
-                </div>
-                <span>Mobile number</span>
-              </label>
+                <label class="float-field phone-field full">
+                  <div class="phone-input-row">
+                    <select id="recipientPhoneCountry" class="phone-country-select" aria-label="Country code">
+                      <option value="IE" selected>🇮🇪 +353</option>
+                      <option value="GB">🇬🇧 +44</option>
+                    </select>
+                    <input id="recipientPhone" required placeholder=" " inputmode="tel" autocomplete="tel-national" />
+                  </div>
+                  <span>Mobile number</span>
+                </label>
 
-              <label class="float-field full">
-                <input id="recipientEmail" type="email" placeholder=" " autocomplete="email" inputmode="email" />
-                <span>Recipient email (optional)</span>
-              </label>
-              <p class="field-helper full">We’ll also email their PintDrop as a backup.</p>
+                <label class="float-field full">
+                  <input id="recipientEmail" type="email" placeholder=" " autocomplete="email" inputmode="email" />
+                  <span>Recipient email (optional)</span>
+                </label>
+                <p class="field-helper full">We’ll also email their PintDrop as a backup.</p>
 
-              <label class="float-field full message-field">
-                <textarea id="message" rows="3" placeholder="Add a personal message (optional)"></textarea>
-              </label>
+                <label class="float-field full message-field">
+                  <textarea id="message" rows="3" placeholder="Add a personal message (optional)"></textarea>
+                </label>
+              </div>
+            </div>
 
-              <label class="float-field">
-                <input id="senderName" required placeholder=" " autocomplete="name" value="Ryan" />
-                <span>Sender name</span>
-              </label>
+            <div class="form-section">
+              <h3 class="form-section-title">Your details</h3>
+              <div class="field-grid">
+                <label class="float-field">
+                  <input id="senderName" required placeholder=" " autocomplete="name" />
+                  <span>Sender name</span>
+                </label>
 
-              <label class="float-field">
-                <input id="senderEmail" required type="email" placeholder=" " autocomplete="email" value="ryan@example.com" inputmode="email" />
-                <span>Sender email</span>
-              </label>
+                <label class="float-field">
+                  <input id="senderEmail" required type="email" placeholder=" " autocomplete="email" inputmode="email" />
+                  <span>Sender email</span>
+                </label>
+              </div>
             </div>
 
             <div class="order-summary-strip full">

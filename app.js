@@ -4,6 +4,8 @@ const DEMO_PUBS = [
   { id: "local", name: "Your Local", town: "Coming soon", icon: "📍", participating: false }
 ];
 
+const CUSTOMER_VISIBLE_PUB_IDS = new Set(["oflahertys", "local"]);
+
 let pubs = DEMO_PUBS.map(pub => ({ ...pub }));
 
 function sortPubs(list) {
@@ -17,26 +19,34 @@ function sortPubs(list) {
   });
 }
 
+function applyCustomerPubFilter(list) {
+  return sortPubs(list.filter(pub => CUSTOMER_VISIBLE_PUB_IDS.has(pub.id)));
+}
+
 async function loadPubs() {
   pubs = DEMO_PUBS.map(pub => ({ ...pub }));
 
   if (!window.PintDropSupabase?.isConfigured?.()) {
+    pubs = applyCustomerPubFilter(pubs);
     return;
   }
 
   try {
     const remotePubs = await window.PintDropSupabase.fetchPubs();
-    if (!remotePubs?.length) return;
-
-    const remoteById = new Map(remotePubs.map(pub => [pub.id, pub]));
-    const demoOnly = DEMO_PUBS.filter(pub => !remoteById.has(pub.id));
-    pubs = sortPubs([
-      ...remotePubs,
-      ...demoOnly.map(pub => ({ ...pub, source: "demo" }))
-    ]);
+    if (remotePubs?.length) {
+      const remoteById = new Map(remotePubs.map(pub => [pub.id, pub]));
+      const demoOnly = DEMO_PUBS.filter(pub => !remoteById.has(pub.id));
+      pubs = applyCustomerPubFilter([
+        ...remotePubs,
+        ...demoOnly.map(pub => ({ ...pub, source: "demo" }))
+      ]);
+      return;
+    }
   } catch (error) {
     console.warn("[PintDrop] Using demo pubs after Supabase error:", error);
   }
+
+  pubs = applyCustomerPubFilter(pubs);
 }
 
 const DEMO_GIFTS = [
@@ -101,12 +111,12 @@ const LOGO = {
   full: "images/pintdrop-logo.png"
 };
 const DEMO = {
-  sender: "Ryan",
-  senderEmail: "ryan@example.com",
-  recipient: "Dad",
-  phone: "087 123 4567",
+  sender: "",
+  senderEmail: "",
+  recipient: "",
+  phone: "",
   phoneCountry: "IE",
-  message: "Happy birthday Dad — have one on me 🍻"
+  message: ""
 };
 let selectedPub = pubs[0];
 let selectedGift = gifts[0];

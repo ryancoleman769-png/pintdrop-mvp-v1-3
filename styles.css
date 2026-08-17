@@ -1371,6 +1371,23 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   display: grid;
   gap: 28px;
 }
+#customer .form-section {
+  display: grid;
+  gap: 16px;
+}
+#customer .form-section + .form-section {
+  margin-top: 4px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+#customer .form-section-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 #customer .float-field {
   position: relative;
   display: block;
