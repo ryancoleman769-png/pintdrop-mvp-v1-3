@@ -130,6 +130,8 @@ const PARTNER_DRINK_SUPABASE_IDS = {
   tab: 6
 };
 const PARTNER_DEMO_SEED_KEY = "pintdrop_partner_demo_seeded";
+const PARTNER_SHIFT_STORAGE_KEY = "pintdrop_partner_shift";
+const PARTNER_SHIFT_DURATION_MS = 12 * 60 * 60 * 1000;
 
 let partnerVouchers = null;
 let publicVoucherDisplay = null;
@@ -2266,6 +2268,64 @@ function getPartnerAuthApi() {
   return window.PintDropSupabase?.PartnerAuth || null;
 }
 
+function readPartnerShiftWindow() {
+  try {
+    const raw = localStorage.getItem(PARTNER_SHIFT_STORAGE_KEY);
+    if (!raw) return null;
+
+    const data = JSON.parse(raw);
+    const startedAt = Number(data?.startedAt);
+    const expiresAt = Number(data?.expiresAt);
+    if (!Number.isFinite(startedAt) || !Number.isFinite(expiresAt) || expiresAt <= startedAt) {
+      return null;
+    }
+
+    return { startedAt, expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+function setPartnerShiftExpiry() {
+  const startedAt = Date.now();
+  const expiresAt = startedAt + PARTNER_SHIFT_DURATION_MS;
+
+  try {
+    localStorage.setItem(PARTNER_SHIFT_STORAGE_KEY, JSON.stringify({ startedAt, expiresAt }));
+  } catch (error) {
+    console.warn("[PintDrop Partner Auth] Could not persist shift window:", error);
+  }
+
+  return { startedAt, expiresAt };
+}
+
+function clearPartnerShiftExpiry() {
+  try {
+    localStorage.removeItem(PARTNER_SHIFT_STORAGE_KEY);
+  } catch (error) {
+    console.warn("[PintDrop Partner Auth] Could not clear shift window:", error);
+  }
+}
+
+function isPartnerShiftExpired() {
+  const shift = readPartnerShiftWindow();
+  if (!shift) return true;
+  return Date.now() >= shift.expiresAt;
+}
+
+function hasValidPartnerShift() {
+  return !isPartnerShiftExpired();
+}
+
+async function expirePartnerShiftSession() {
+  const auth = getPartnerAuthApi();
+  if (auth?.signOut) {
+    await auth.signOut();
+  }
+  clearPartnerShiftExpiry();
+  clearPartnerSessionState();
+}
+
 function setPartnerPanelVisibility({
   loading = false,
   login = false,
@@ -2290,6 +2350,11 @@ function clearPartnerSessionState() {
 }
 
 async function applyPartnerSession(session) {
+  if (session && isPartnerShiftExpired()) {
+    await expirePartnerShiftSession();
+    return "logged_out";
+  }
+
   partnerSession = session || null;
   partnerProfile = null;
   partnerStripeConnectData = null;
@@ -2338,7 +2403,11 @@ async function initPartnerAuth() {
   }
 
   const session = await auth.getSession();
-  await applyPartnerSession(session);
+  if (session && isPartnerShiftExpired()) {
+    await expirePartnerShiftSession();
+  } else {
+    await applyPartnerSession(session);
+  }
   partnerAuthReady = true;
 }
 
@@ -2349,7 +2418,8 @@ async function ensurePartnerAuthReady() {
 
 function hasActivePartnerProfile() {
   return Boolean(
-    partnerSession
+    hasValidPartnerShift()
+    && partnerSession
     && partnerProfile
     && Number.isFinite(Number(partnerProfile.pub_id))
     && Number(partnerProfile.pub_id) > 0
@@ -2860,6 +2930,7 @@ async function handlePartnerLoginSubmit(event) {
     return;
   }
 
+  setPartnerShiftExpiry();
   await applyPartnerSession(result.session || (await auth.getSession()));
   if (submitBtn) {
     submitBtn.disabled = false;
@@ -2873,6 +2944,7 @@ async function handlePartnerLogout() {
   if (auth?.signOut) {
     await auth.signOut();
   }
+  clearPartnerShiftExpiry();
   clearPartnerSessionState();
   void renderPartner();
 }
