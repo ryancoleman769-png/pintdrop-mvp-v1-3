@@ -4,16 +4,15 @@ const {
   sendJson,
   readJsonBody,
   createStripeClient,
-  requireAdminKey,
   requireSupabaseServiceRole,
-  supabaseRpc,
+  authorizeConnectRequest,
+  loadPubStripeConnect,
   syncStripeAccountToSupabase
 } = require("../_lib/connect-helpers");
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;
   if (!requirePost(req, res)) return;
-  if (process.env.VERCEL_ENV !== "preview" && !requireAdminKey(req, res)) return;
   if (!requireSupabaseServiceRole(res)) return;
 
   const stripeResult = createStripeClient();
@@ -24,14 +23,10 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = await readJsonBody(req);
-    const pubId = Number(body.pubId);
+    const auth = await authorizeConnectRequest(req, res, body);
+    if (!auth) return;
 
-    if (!Number.isFinite(pubId) || pubId <= 0) {
-      sendJson(res, 400, { ok: false, error: "pubId is required." });
-      return;
-    }
-
-    const pub = await supabaseRpc("get_pub_stripe_connect", { p_pub_id: pubId });
+    const pub = await loadPubStripeConnect(auth.pubId);
     if (!pub) {
       sendJson(res, 404, { ok: false, error: "Pub not found." });
       return;
@@ -40,7 +35,7 @@ module.exports = async function handler(req, res) {
     if (!pub.stripe_account_id) {
       sendJson(res, 200, {
         ok: true,
-        pubId,
+        pubId: auth.pubId,
         stripeAccountId: null,
         stripeOnboardingStatus: pub.stripe_onboarding_status || "not_started",
         stripePayoutsReady: false
@@ -53,13 +48,15 @@ module.exports = async function handler(req, res) {
 
     sendJson(res, 200, {
       ok: true,
-      pubId,
+      pubId: auth.pubId,
       stripeAccountId: account.id,
       stripeOnboardingStatus: synced?.stripe_onboarding_status || pub.stripe_onboarding_status,
       stripePayoutsReady: synced?.stripe_payouts_ready || false,
       stripeChargesEnabled: synced?.stripe_charges_enabled ?? account.charges_enabled,
       stripePayoutsEnabled: synced?.stripe_payouts_enabled ?? account.payouts_enabled,
-      stripeDetailsSubmitted: synced?.stripe_details_submitted ?? account.details_submitted
+      stripeDetailsSubmitted: synced?.stripe_details_submitted ?? account.details_submitted,
+      active: pub.active,
+      onboardingStatus: pub.onboarding_status
     });
   } catch (error) {
     console.error("[stripe-connect/account-status]", error);

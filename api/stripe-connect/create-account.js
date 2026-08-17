@@ -4,16 +4,14 @@ const {
   sendJson,
   readJsonBody,
   createStripeClient,
-  requireAdminKey,
   requireSupabaseServiceRole,
-  supabaseRpc,
-  syncStripeAccountToSupabase
+  authorizeConnectRequest,
+  ensureStripeConnectAccount
 } = require("../_lib/connect-helpers");
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;
   if (!requirePost(req, res)) return;
-  if (process.env.VERCEL_ENV !== "preview" && !requireAdminKey(req, res)) return;
   if (!requireSupabaseServiceRole(res)) return;
 
   const stripeResult = createStripeClient();
@@ -24,54 +22,22 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = await readJsonBody(req);
-    const pubId = Number(body.pubId);
+    const auth = await authorizeConnectRequest(req, res, body);
+    if (!auth) return;
 
-    if (!Number.isFinite(pubId) || pubId <= 0) {
-      sendJson(res, 400, { ok: false, error: "pubId is required." });
+    const ensured = await ensureStripeConnectAccount(stripeResult.stripe, auth.pubId);
+    if (ensured.error) {
+      sendJson(res, ensured.status || 500, { ok: false, error: ensured.error });
       return;
     }
-
-    const existing = await supabaseRpc("get_pub_stripe_connect", { p_pub_id: pubId });
-    if (!existing) {
-      sendJson(res, 404, { ok: false, error: "Pub not found." });
-      return;
-    }
-
-    if (existing.stripe_account_id) {
-      sendJson(res, 200, {
-        ok: true,
-        pubId,
-        stripeAccountId: existing.stripe_account_id,
-        stripeOnboardingStatus: existing.stripe_onboarding_status,
-        stripePayoutsReady: existing.stripe_payouts_ready,
-        reused: true
-      });
-      return;
-    }
-
-    const account = await stripeResult.stripe.accounts.create({
-      type: "express",
-      country: "IE",
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true }
-      },
-      metadata: {
-        pub_id: String(pubId),
-        pintdrop_pub_id: String(pubId),
-        pub_name: String(existing.name || "")
-      }
-    });
-
-    const synced = await syncStripeAccountToSupabase(account);
 
     sendJson(res, 200, {
       ok: true,
-      pubId,
-      stripeAccountId: account.id,
-      stripeOnboardingStatus: synced?.stripe_onboarding_status || "pending",
-      stripePayoutsReady: synced?.stripe_payouts_ready || false,
-      reused: false
+      pubId: auth.pubId,
+      stripeAccountId: ensured.stripeAccountId,
+      stripeOnboardingStatus: ensured.pub?.stripe_onboarding_status || "pending",
+      stripePayoutsReady: ensured.pub?.stripe_payouts_ready || false,
+      reused: ensured.reused === true
     });
   } catch (error) {
     console.error("[stripe-connect/create-account]", error);

@@ -1,7 +1,13 @@
 const crypto = require("crypto");
 const Stripe = require("stripe");
+const {
+  hasValidAdminSession,
+  getAdminSessionFromRequest,
+  getAdminSessionSecret
+} = require("./admin-session");
 
 const DEFAULT_SUPABASE_URL = "https://ggvofckolukahshocxvd.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_4NAQehcdmGoOOUbDMHniHg_8ExxQv3m";
 
 function getRequestOrigin(req) {
   const proto = req.headers["x-forwarded-proto"] || "https";
@@ -9,7 +15,7 @@ function getRequestOrigin(req) {
   if (host) {
     return proto + "://" + host;
   }
-  return "https://pintdrop-mvp-v1-3.vercel.app";
+  return "https://pintdrop.ie";
 }
 
 function readJsonBody(req) {
@@ -70,15 +76,25 @@ function getStripeSecretKey() {
   return String(process.env.STRIPE_SECRET_KEY || "").trim();
 }
 
-function createStripeClient() {
-  const secretKey = getStripeSecretKey();
+const STRIPE_SECRET_KEY_PATTERN = /^sk_(test|live)_[A-Za-z0-9]+$/;
+
+function validateStripeSecretKey(raw) {
+  const secretKey = String(raw || "").trim();
   if (!secretKey) {
     return { error: "Stripe is not configured on the server." };
   }
-  if (!secretKey.startsWith("sk_test_")) {
-    return { error: "Stripe test mode only. Use a sk_test_ key." };
+  if (!STRIPE_SECRET_KEY_PATTERN.test(secretKey)) {
+    return { error: "Invalid Stripe secret key format." };
   }
-  return { stripe: new Stripe(secretKey) };
+  return { secretKey };
+}
+
+function createStripeClient() {
+  const validated = validateStripeSecretKey(getStripeSecretKey());
+  if (validated.error) {
+    return { error: validated.error };
+  }
+  return { stripe: new Stripe(validated.secretKey) };
 }
 
 function getSupabaseUrl() {
@@ -87,6 +103,56 @@ function getSupabaseUrl() {
 
 function getSupabaseServiceRoleKey() {
   return String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+}
+
+function getSupabaseAnonKey() {
+  return String(process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+}
+
+function getPartnerAccessTokenFromRequest(req) {
+  const headers = req.headers;
+  if (!headers) return "";
+
+  let authHeader = "";
+  if (typeof headers.get === "function") {
+    authHeader = String(headers.get("authorization") || "").trim();
+  }
+  if (!authHeader) {
+    authHeader = String(headers.authorization || "").trim();
+  }
+
+  if (authHeader.toLowerCase().startsWith("bearer ")) {
+    return authHeader.slice(7).trim();
+  }
+
+  return "";
+}
+
+function hasValidAdminKey(req) {
+  const configuredKey = String(process.env.PINTDROP_ADMIN_KEY || "").trim();
+  if (!configuredKey) return false;
+
+  const providedKey = getAdminKeyFromRequest(req);
+  return Boolean(providedKey && timingSafeEqualStrings(providedKey, configuredKey));
+}
+
+function hasValidAdminAuth(req) {
+  return hasValidAdminKey(req) || hasValidAdminSession(req);
+}
+
+function requireAdminAuth(req, res) {
+  const configuredKey = String(process.env.PINTDROP_ADMIN_KEY || "").trim();
+  if (!configuredKey) {
+    sendJson(res, 500, { ok: false, error: "PINTDROP_ADMIN_KEY is not configured on the server." });
+    return false;
+  }
+
+  if (!hasValidAdminAuth(req)) {
+    sendJson(res, 401, { ok: false, error: "Unauthorized." });
+    return false;
+  }
+
+  return true;
 }
 
 function getAdminKeyFromRequest(req) {
@@ -148,6 +214,170 @@ function requireSupabaseServiceRole(res) {
     return null;
   }
   return serviceRoleKey;
+}
+
+async function supabaseRpcAsUser(functionName, payload, accessToken) {
+  const anonKey = getSupabaseAnonKey();
+  if (!anonKey) {
+    throw new Error("SUPABASE_ANON_KEY is not configured.");
+  }
+
+  if (!accessToken) {
+    throw new Error("Partner access token is required.");
+  }
+
+  const response = await fetch(getSupabaseUrl() + "/rest/v1/rpc/" + functionName, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+      Authorization: "Bearer " + accessToken
+    },
+    body: JSON.stringify(payload || {})
+  });
+
+  const text = await response.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      data = text;
+    }
+  }
+
+  if (!response.ok) {
+    const message = data?.message || data?.error || text || "Supabase RPC failed.";
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+async function resolveAuthenticatedPartnerPub(req) {
+  const accessToken = getPartnerAccessTokenFromRequest(req);
+  if (!accessToken) return null;
+
+  const configuredAdminKey = String(process.env.PINTDROP_ADMIN_KEY || "").trim();
+  if (configuredAdminKey && timingSafeEqualStrings(accessToken, configuredAdminKey)) {
+    return null;
+  }
+
+  const anonKey = getSupabaseAnonKey();
+  if (!anonKey) return null;
+
+  const userResponse = await fetch(getSupabaseUrl() + "/auth/v1/user", {
+    method: "GET",
+    headers: {
+      apikey: anonKey,
+      Authorization: "Bearer " + accessToken
+    }
+  });
+
+  if (!userResponse.ok) {
+    return null;
+  }
+
+  let profile = null;
+  try {
+    profile = await supabaseRpcAsUser("get_my_partner_profile", {}, accessToken);
+  } catch (error) {
+    console.warn("[stripe-connect] Partner profile lookup failed:", error.message);
+    return null;
+  }
+
+  const pubId = Number(profile?.pub_id);
+  if (!Number.isFinite(pubId) || pubId <= 0) {
+    return null;
+  }
+
+  return {
+    pubId,
+    profile,
+    accessToken
+  };
+}
+
+async function authorizeConnectRequest(req, res, body = {}) {
+  if (hasValidAdminKey(req)) {
+    const pubId = Number(body.pubId);
+    if (!Number.isFinite(pubId) || pubId <= 0) {
+      sendJson(res, 400, { ok: false, error: "pubId is required." });
+      return null;
+    }
+
+    return {
+      mode: "admin",
+      pubId
+    };
+  }
+
+  const partner = await resolveAuthenticatedPartnerPub(req);
+  if (!partner) {
+    sendJson(res, 401, { ok: false, error: "Partner authentication required." });
+    return null;
+  }
+
+  const bodyPubId = Number(body.pubId);
+  if (Number.isFinite(bodyPubId) && bodyPubId > 0 && bodyPubId !== partner.pubId) {
+    sendJson(res, 403, { ok: false, error: "Access denied for pub." });
+    return null;
+  }
+
+  return {
+    mode: "partner",
+    pubId: partner.pubId,
+    profile: partner.profile
+  };
+}
+
+async function loadPubStripeConnect(pubId) {
+  return supabaseRpc("get_pub_stripe_connect", { p_pub_id: pubId });
+}
+
+async function ensureStripeConnectAccount(stripe, pubId, existingPub) {
+  let pub = existingPub || null;
+
+  if (!pub) {
+    pub = await loadPubStripeConnect(pubId);
+  }
+
+  if (!pub) {
+    return { error: "Pub not found.", status: 404 };
+  }
+
+  if (pub.stripe_account_id) {
+    return {
+      pub,
+      stripeAccountId: String(pub.stripe_account_id),
+      created: false,
+      reused: true
+    };
+  }
+
+  const account = await stripe.accounts.create({
+    type: "express",
+    country: "IE",
+    capabilities: {
+      card_payments: { requested: true },
+      transfers: { requested: true }
+    },
+    metadata: {
+      pub_id: String(pubId),
+      pintdrop_pub_id: String(pubId),
+      pub_name: String(pub.name || "")
+    }
+  });
+
+  await syncStripeAccountToSupabase(account);
+
+  const refreshed = await loadPubStripeConnect(pubId);
+  return {
+    pub: refreshed || pub,
+    stripeAccountId: account.id,
+    created: true,
+    reused: false
+  };
 }
 
 async function supabaseRpc(functionName, payload) {
@@ -267,11 +497,24 @@ module.exports = {
   handleOptions,
   requirePost,
   createStripeClient,
+  validateStripeSecretKey,
   getSupabaseUrl,
+  getSupabaseAnonKey,
   getSupabaseServiceRoleKey,
+  getPartnerAccessTokenFromRequest,
+  getAdminSessionSecret,
+  hasValidAdminKey,
+  hasValidAdminAuth,
+  requireAdminAuth,
   requireAdminKey,
+  getAdminSessionFromRequest,
   requireSupabaseServiceRole,
   supabaseRpc,
+  supabaseRpcAsUser,
+  resolveAuthenticatedPartnerPub,
+  authorizeConnectRequest,
+  loadPubStripeConnect,
+  ensureStripeConnectAccount,
   supabaseSelectPubs,
   deriveOnboardingStatus,
   syncStripeAccountToSupabase
