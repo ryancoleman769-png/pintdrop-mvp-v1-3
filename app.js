@@ -2276,9 +2276,10 @@ function setPartnerPanelVisibility({
   $("partnerLogin")?.classList.toggle("hidden", !login);
   $("partnerAccessDenied")?.classList.toggle("hidden", !denied);
   $("partnerDashboard")?.classList.toggle("hidden", !dashboard);
+  const onPartnerView = $("partner")?.classList.contains("active");
   document.body.classList.toggle(
     "partner-login-active",
-    loading || login || denied
+    onPartnerView && (loading || login || denied)
   );
 }
 
@@ -2919,7 +2920,14 @@ if (sessionStorage.getItem("pintdrop_splash_seen")) {
   seedPartnerDemoData();
   await applyDemoDefaults();
   $("pubSearch")?.addEventListener("input", (event) => filterPubList(event.target.value));
-  await renderPartner();
+  await initPartnerAuth();
+
+  const params = new URLSearchParams(location.search);
+  if (params.get("view") === "partner") {
+    dismissSplash();
+    switchView("partner");
+  }
+
   renderSms();
 
   const handledStripeReturn = await handleStripeReturn();
