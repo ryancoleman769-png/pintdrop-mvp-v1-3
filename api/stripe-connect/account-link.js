@@ -5,15 +5,14 @@ const {
   sendJson,
   readJsonBody,
   createStripeClient,
-  requireAdminKey,
   requireSupabaseServiceRole,
-  supabaseRpc
+  authorizeConnectRequest,
+  ensureStripeConnectAccount
 } = require("../_lib/connect-helpers");
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;
   if (!requirePost(req, res)) return;
-  if (process.env.VERCEL_ENV !== "preview" && !requireAdminKey(req, res)) return;
   if (!requireSupabaseServiceRole(res)) return;
 
   const stripeResult = createStripeClient();
@@ -24,40 +23,30 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = await readJsonBody(req);
-    const pubId = Number(body.pubId);
+    const auth = await authorizeConnectRequest(req, res, body);
+    if (!auth) return;
 
-    if (!Number.isFinite(pubId) || pubId <= 0) {
-      sendJson(res, 400, { ok: false, error: "pubId is required." });
-      return;
-    }
-
-    const pub = await supabaseRpc("get_pub_stripe_connect", { p_pub_id: pubId });
-    if (!pub) {
-      sendJson(res, 404, { ok: false, error: "Pub not found." });
-      return;
-    }
-
-    if (!pub.stripe_account_id) {
-      sendJson(res, 400, {
-        ok: false,
-        error: "Pub does not have a Stripe connected account yet. Create one first."
-      });
+    const ensured = await ensureStripeConnectAccount(stripeResult.stripe, auth.pubId);
+    if (ensured.error) {
+      sendJson(res, ensured.status || 500, { ok: false, error: ensured.error });
       return;
     }
 
     const origin = getRequestOrigin(req);
     const accountLink = await stripeResult.stripe.accountLinks.create({
-      account: pub.stripe_account_id,
+      account: ensured.stripeAccountId,
       type: "account_onboarding",
-      return_url: origin + "/?view=partner&connect=return&pubId=" + pubId,
-      refresh_url: origin + "/?view=partner&connect=refresh&pubId=" + pubId
+      return_url: origin + "/?view=partner&connect=return",
+      refresh_url: origin + "/?view=partner&connect=refresh"
     });
 
     sendJson(res, 200, {
       ok: true,
-      pubId,
-      stripeAccountId: pub.stripe_account_id,
-      url: accountLink.url
+      pubId: auth.pubId,
+      stripeAccountId: ensured.stripeAccountId,
+      url: accountLink.url,
+      accountCreated: ensured.created === true,
+      accountReused: ensured.reused === true
     });
   } catch (error) {
     console.error("[stripe-connect/account-link]", error);

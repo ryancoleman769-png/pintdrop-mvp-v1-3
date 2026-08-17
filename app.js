@@ -140,6 +140,9 @@ let partnerQrDecodeCanvas = null;
 let partnerQrDecodeContext = null;
 let partnerQrDecodeInFlight = false;
 let partnerZxingReader = null;
+let partnerStripeConnectData = null;
+let partnerConnectSession = null;
+let partnerConnectProfile = null;
 
 const $ = (id) => document.getElementById(id);
 const money = (value) => new Intl.NumberFormat("en-IE", {
@@ -2257,42 +2260,176 @@ function computePeriodSummary(vouchers, period) {
   };
 }
 
-async function refreshPartnerPayoutStatus() {
+function getPartnerAuthApi() {
+  return window.PintDropSupabase?.PartnerAuth || null;
+}
+
+async function ensurePartnerConnectSession() {
+  const auth = getPartnerAuthApi();
+  if (!auth?.getSession) return null;
+  partnerConnectSession = await auth.getSession();
+  return partnerConnectSession;
+}
+
+async function ensurePartnerConnectProfile() {
+  const auth = getPartnerAuthApi();
+  if (!auth?.fetchProfile) return null;
+  if (!partnerConnectProfile) {
+    partnerConnectProfile = await auth.fetchProfile();
+  }
+  return partnerConnectProfile;
+}
+
+function hasActivePartnerProfile() {
+  return Boolean(partnerConnectProfile?.pub_id);
+}
+
+function getPartnerAccessToken() {
+  return partnerConnectSession?.access_token || null;
+}
+
+function buildPartnerConnectRequestInit(body = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const accessToken = getPartnerAccessToken();
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  return {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body || {})
+  };
+}
+
+function normalizePartnerStripeConnectData(data) {
+  if (!data) return null;
+
+  return {
+    stripe_payouts_ready: data.stripe_payouts_ready === true || data.stripePayoutsReady === true,
+    stripe_onboarding_status: String(
+      data.stripe_onboarding_status || data.stripeOnboardingStatus || "not_started"
+    ).trim().toLowerCase(),
+    stripe_account_id: data.stripe_account_id || data.stripeAccountId || null,
+    active: data.active,
+    onboarding_status: data.onboarding_status || data.onboardingStatus || null
+  };
+}
+
+function applyPartnerPayoutStatusUi(data) {
   const status = $("stripeConnectStatus");
   if (!status) return;
 
+  const normalized = normalizePartnerStripeConnectData(data);
+  if (!normalized) return;
+
+  if (normalized.stripe_payouts_ready) {
+    status.textContent = "Payout setup: Payouts ready";
+    setPartnerPayoutsAction(true);
+    return;
+  }
+
+  setPartnerPayoutsAction(false);
+
+  if (normalized.stripe_onboarding_status === "not_started") {
+    status.textContent = "Payout setup: Not started";
+    return;
+  }
+
+  status.textContent = "Payout setup: Setup incomplete";
+}
+
+function isPartnerStripeConnectReturn() {
+  const params = new URLSearchParams(location.search);
+  return params.get("connect") === "return";
+}
+
+function clearPartnerConnectReturnParam() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("connect") !== "return") return;
+
+  params.delete("connect");
+  const query = params.toString();
+  history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
+}
+
+async function fetchPartnerAccountStatus() {
+  const response = await fetch(
+    "/api/stripe-connect/account-status",
+    buildPartnerConnectRequestInit({})
+  );
+
+  let data = {};
   try {
-    const response = await fetch("/api/stripe-connect/account-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pubId: PARTNER_SUPABASE_PUB_ID })
-    });
+    data = await response.json();
+  } catch (error) {
+    console.warn("[PintDrop Stripe Connect] Invalid account-status response:", error);
+  }
 
-    let data = {};
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || "Could not load payout status.");
+  }
+
+  return data;
+}
+
+async function refreshPartnerPayoutStatus(options = {}) {
+  const status = $("stripeConnectStatus");
+  if (!status) return;
+
+  await ensurePartnerConnectSession();
+  await ensurePartnerConnectProfile();
+  if (!hasActivePartnerProfile()) return;
+
+  partnerStripeConnectData = null;
+  const forceLiveSync = options.forceLiveSync === true || isPartnerStripeConnectReturn();
+
+  let rpcData = null;
+  const auth = getPartnerAuthApi();
+  if (auth?.fetchStripeConnect) {
     try {
-      data = await response.json();
+      rpcData = await auth.fetchStripeConnect();
     } catch (error) {
-      console.warn("[PintDrop Stripe Connect] Invalid account-status response:", error);
+      console.warn("[PintDrop Partner Auth] Stripe connect fetch failed:", error);
     }
+  }
 
-    if (!response.ok || !data?.ok) {
-      throw new Error(data?.error || "Could not load payout status.");
-    }
+  const normalizedRpc = normalizePartnerStripeConnectData(rpcData);
+  const shouldLiveSync =
+    forceLiveSync
+    || (
+      Boolean(normalizedRpc?.stripe_account_id)
+      && !normalizedRpc?.stripe_payouts_ready
+    );
 
-    if (data.stripePayoutsReady === true) {
-      status.textContent = "Payout setup: Payouts ready";
-      setPartnerPayoutsAction(true);
+  if (shouldLiveSync && getPartnerAccessToken()) {
+    try {
+      const data = await fetchPartnerAccountStatus();
+      partnerStripeConnectData = normalizePartnerStripeConnectData(data);
+      applyPartnerPayoutStatusUi(data);
+      if (isPartnerStripeConnectReturn()) {
+        clearPartnerConnectReturnParam();
+      }
       return;
+    } catch (error) {
+      console.warn("[PintDrop Stripe Connect] Live payout status refresh failed:", error);
     }
+  }
 
-    setPartnerPayoutsAction(false);
+  if (rpcData) {
+    partnerStripeConnectData = normalizedRpc;
+    applyPartnerPayoutStatusUi(rpcData);
+    return;
+  }
 
-    if (data.stripeOnboardingStatus === "not_started") {
-      status.textContent = "Payout setup: Not started";
-      return;
-    }
+  if (!getPartnerAccessToken()) {
+    return;
+  }
 
-    status.textContent = "Payout setup: Setup incomplete";
+  try {
+    const data = await fetchPartnerAccountStatus();
+    partnerStripeConnectData = normalizePartnerStripeConnectData(data);
+    applyPartnerPayoutStatusUi(data);
   } catch (error) {
     console.warn("[PintDrop Stripe Connect] Payout status refresh failed:", error);
   }
@@ -2319,15 +2456,23 @@ async function startPartnerPayoutSetup() {
   const status = $("stripeConnectStatus");
   if (!button || button.disabled) return;
 
+  await ensurePartnerConnectSession();
+  await ensurePartnerConnectProfile();
+  if (!hasActivePartnerProfile()) return;
+
+  if (!getPartnerAccessToken()) {
+    if (status) status.textContent = "Please sign in again to set up payouts.";
+    return;
+  }
+
   button.disabled = true;
   if (status) status.textContent = "Opening Stripe payout setup…";
 
   try {
-    const response = await fetch("/api/stripe-connect/account-link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pubId: PARTNER_SUPABASE_PUB_ID })
-    });
+    const response = await fetch(
+      "/api/stripe-connect/account-link",
+      buildPartnerConnectRequestInit({})
+    );
 
     let data = {};
     try {
