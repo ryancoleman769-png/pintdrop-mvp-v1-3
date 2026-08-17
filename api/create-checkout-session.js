@@ -1,6 +1,6 @@
 const Stripe = require("stripe");
 const { calculateServiceFee, calculateOrderTotal } = require("./_lib/pricing");
-const { supabaseRpc } = require("./_lib/connect-helpers");
+const { resolveStripeSecretKey, supabaseRpc } = require("./_lib/connect-helpers");
 const { buildCheckoutMetadata } = require("./_lib/fulfillment");
 
 function getRequestOrigin(req) {
@@ -88,16 +88,12 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) {
-    res.status(500).json({ ok: false, error: "Stripe is not configured on the server." });
+  const stripeKey = resolveStripeSecretKey();
+  if (stripeKey.error) {
+    res.status(500).json({ ok: false, error: stripeKey.error });
     return;
   }
-
-  if (!secretKey.startsWith("sk_test_")) {
-    res.status(500).json({ ok: false, error: "Stripe test mode only. Use a sk_test_ key." });
-    return;
-  }
+  const secretKey = stripeKey.secretKey;
 
   try {
     const body = await readJsonBody(req);
