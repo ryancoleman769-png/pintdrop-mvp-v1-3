@@ -1,4 +1,4 @@
-const Stripe = require("stripe");
+const { createStripeClient } = require("./_lib/connect-helpers");
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -32,14 +32,9 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) {
-    res.status(500).json({ ok: false, error: "Stripe is not configured on the server." });
-    return;
-  }
-
-  if (!secretKey.startsWith("sk_test_")) {
-    res.status(500).json({ ok: false, error: "Stripe test mode only. Use a sk_test_ key." });
+  const stripeResult = createStripeClient();
+  if (stripeResult.error) {
+    res.status(500).json({ ok: false, error: stripeResult.error });
     return;
   }
 
@@ -53,8 +48,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const stripe = new Stripe(secretKey);
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripeResult.stripe.checkout.sessions.retrieve(sessionId);
 
     if (session.payment_status !== "paid") {
       res.status(402).json({ ok: false, error: "Payment not completed." });
