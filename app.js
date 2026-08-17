@@ -1,5 +1,5 @@
 const DEMO_PUBS = [
-  { id: "oflahertys", supabaseId: 1, name: "O'Flaherty's Bar", town: "Buncrana", icon: "🍺", image: "images/oflahertys-bar.jpg", participating: true },
+  { id: "oflahertys", supabaseId: 8, name: "O'Flaherty's Bar", town: "Buncrana", icon: "🍺", image: "images/oflahertys-bar.jpg", participating: true },
   { id: "drift", name: "The Drift Inn", town: "Buncrana", icon: "🍻", participating: true },
   { id: "local", name: "Your Local", town: "Coming soon", icon: "📍", participating: false }
 ];
@@ -120,14 +120,13 @@ let partnerActivityFilter = "today";
 let partnerHistoryFilter = "today";
 
 const PARTNER_PUB_ID = "oflahertys";
-const PARTNER_SUPABASE_PUB_ID = 1;
+const PARTNER_SUPABASE_PUB_ID = 8;
 const PARTNER_DRINK_SUPABASE_IDS = {
-  pint: 1,
-  wine: 2,
-  cocktail: 3,
-  spirit: 4,
-  soft: 5,
-  tab: 6
+  pint: 35,
+  wine: 36,
+  cocktail: 37,
+  spirit: 38,
+  tab: 39
 };
 const PARTNER_DEMO_SEED_KEY = "pintdrop_partner_demo_seeded";
 const PARTNER_SHIFT_STORAGE_KEY = "pintdrop_partner_shift";
