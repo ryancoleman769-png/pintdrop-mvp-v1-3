@@ -141,8 +141,10 @@ let partnerQrDecodeContext = null;
 let partnerQrDecodeInFlight = false;
 let partnerZxingReader = null;
 let partnerStripeConnectData = null;
-let partnerConnectSession = null;
-let partnerConnectProfile = null;
+let partnerSession = null;
+let partnerProfile = null;
+let partnerAuthReady = false;
+let partnerAuthUnsubscribe = null;
 
 const $ = (id) => document.getElementById(id);
 const money = (value) => new Intl.NumberFormat("en-IE", {
@@ -2264,28 +2266,97 @@ function getPartnerAuthApi() {
   return window.PintDropSupabase?.PartnerAuth || null;
 }
 
-async function ensurePartnerConnectSession() {
-  const auth = getPartnerAuthApi();
-  if (!auth?.getSession) return null;
-  partnerConnectSession = await auth.getSession();
-  return partnerConnectSession;
+function setPartnerPanelVisibility({
+  loading = false,
+  login = false,
+  denied = false,
+  dashboard = false
+} = {}) {
+  $("partnerAuthLoading")?.classList.toggle("hidden", !loading);
+  $("partnerLogin")?.classList.toggle("hidden", !login);
+  $("partnerAccessDenied")?.classList.toggle("hidden", !denied);
+  $("partnerDashboard")?.classList.toggle("hidden", !dashboard);
+  document.body.classList.toggle(
+    "partner-login-active",
+    loading || login || denied
+  );
 }
 
-async function ensurePartnerConnectProfile() {
-  const auth = getPartnerAuthApi();
-  if (!auth?.fetchProfile) return null;
-  if (!partnerConnectProfile) {
-    partnerConnectProfile = await auth.fetchProfile();
+function clearPartnerSessionState() {
+  partnerSession = null;
+  partnerProfile = null;
+  partnerStripeConnectData = null;
+}
+
+async function applyPartnerSession(session) {
+  partnerSession = session || null;
+  partnerProfile = null;
+  partnerStripeConnectData = null;
+
+  if (!partnerSession) {
+    clearPartnerSessionState();
+    return "logged_out";
   }
-  return partnerConnectProfile;
+
+  const auth = getPartnerAuthApi();
+  if (!auth?.fetchProfile) {
+    clearPartnerSessionState();
+    return "denied";
+  }
+
+  const profile = await auth.fetchProfile();
+  if (!profile?.pub_id) {
+    partnerProfile = null;
+    return "needs_registration";
+  }
+
+  partnerProfile = profile;
+  return "logged_in";
+}
+
+async function handlePartnerAuthStateChange(session) {
+  await applyPartnerSession(session);
+  if ($("partner")?.classList.contains("active")) {
+    void renderPartner();
+  }
+}
+
+async function initPartnerAuth() {
+  if (partnerAuthReady) return;
+
+  const auth = getPartnerAuthApi();
+  if (!auth) {
+    partnerAuthReady = true;
+    return;
+  }
+
+  if (!partnerAuthUnsubscribe && auth.onAuthStateChange) {
+    partnerAuthUnsubscribe = auth.onAuthStateChange((session) => {
+      void handlePartnerAuthStateChange(session);
+    });
+  }
+
+  const session = await auth.getSession();
+  await applyPartnerSession(session);
+  partnerAuthReady = true;
+}
+
+async function ensurePartnerAuthReady() {
+  if (partnerAuthReady) return;
+  await initPartnerAuth();
 }
 
 function hasActivePartnerProfile() {
-  return Boolean(partnerConnectProfile?.pub_id);
+  return Boolean(
+    partnerSession
+    && partnerProfile
+    && Number.isFinite(Number(partnerProfile.pub_id))
+    && Number(partnerProfile.pub_id) > 0
+  );
 }
 
 function getPartnerAccessToken() {
-  return partnerConnectSession?.access_token || null;
+  return partnerSession?.access_token || null;
 }
 
 function buildPartnerConnectRequestInit(body = {}) {
@@ -2375,11 +2446,7 @@ async function fetchPartnerAccountStatus() {
 
 async function refreshPartnerPayoutStatus(options = {}) {
   const status = $("stripeConnectStatus");
-  if (!status) return;
-
-  await ensurePartnerConnectSession();
-  await ensurePartnerConnectProfile();
-  if (!hasActivePartnerProfile()) return;
+  if (!status || !hasActivePartnerProfile()) return;
 
   partnerStripeConnectData = null;
   const forceLiveSync = options.forceLiveSync === true || isPartnerStripeConnectReturn();
@@ -2454,11 +2521,7 @@ function setPartnerPayoutsAction(ready) {
 async function startPartnerPayoutSetup() {
   const button = $("setupPayoutsBtn");
   const status = $("stripeConnectStatus");
-  if (!button || button.disabled) return;
-
-  await ensurePartnerConnectSession();
-  await ensurePartnerConnectProfile();
-  if (!hasActivePartnerProfile()) return;
+  if (!button || button.disabled || !hasActivePartnerProfile()) return;
 
   if (!getPartnerAccessToken()) {
     if (status) status.textContent = "Please sign in again to set up payouts.";
@@ -2496,6 +2559,49 @@ async function startPartnerPayoutSetup() {
 }
 
 async function renderPartner() {
+  await ensurePartnerAuthReady();
+
+  if (!getPartnerAuthApi()) {
+    setPartnerPanelVisibility({ login: true });
+    const errorEl = $("partnerLoginError");
+    if (errorEl) {
+      errorEl.textContent = "Partner login is not configured.";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  if (!partnerAuthReady) {
+    setPartnerPanelVisibility({ loading: true });
+    return;
+  }
+
+  if (!partnerSession) {
+    setPartnerPanelVisibility({ login: true });
+    return;
+  }
+
+  const sessionState = partnerProfile?.pub_id
+    ? "logged_in"
+    : (await applyPartnerSession(partnerSession));
+
+  if (sessionState === "needs_registration" || sessionState === "denied") {
+    setPartnerPanelVisibility({ denied: true });
+    return;
+  }
+
+  if (sessionState !== "logged_in") {
+    setPartnerPanelVisibility({ login: true });
+    return;
+  }
+
+  setPartnerPanelVisibility({ dashboard: true });
+
+  const pubNameEl = $("partnerDashboardPubName");
+  if (pubNameEl && partnerProfile?.pub_name) {
+    pubNameEl.textContent = partnerProfile.pub_name;
+  }
+
   await loadPartnerVouchers();
   const vouchers = getPartnerVouchers();
 
@@ -2709,6 +2815,76 @@ async function resetDemoState() {
   renderVoucher();
   renderSms();
 }
+
+async function handlePartnerLoginSubmit(event) {
+  event.preventDefault();
+
+  const auth = getPartnerAuthApi();
+  const email = $("partnerLoginEmail")?.value || "";
+  const password = $("partnerLoginPassword")?.value || "";
+  const errorEl = $("partnerLoginError");
+  const submitBtn = $("partnerLoginBtn");
+
+  if (errorEl) {
+    errorEl.classList.add("hidden");
+    errorEl.textContent = "";
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Signing in…";
+  }
+
+  if (!auth?.signIn) {
+    if (errorEl) {
+      errorEl.textContent = "Partner login is not available.";
+      errorEl.classList.remove("hidden");
+    }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Log in";
+    }
+    return;
+  }
+
+  const result = await auth.signIn(email, password);
+  if (!result.ok) {
+    if (errorEl) {
+      errorEl.textContent = result.error || "Sign in failed.";
+      errorEl.classList.remove("hidden");
+    }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Log in";
+    }
+    return;
+  }
+
+  await applyPartnerSession(result.session || (await auth.getSession()));
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Log in";
+  }
+  void renderPartner();
+}
+
+async function handlePartnerLogout() {
+  const auth = getPartnerAuthApi();
+  if (auth?.signOut) {
+    await auth.signOut();
+  }
+  clearPartnerSessionState();
+  void renderPartner();
+}
+
+$("partnerLoginForm")?.addEventListener("submit", (event) => {
+  void handlePartnerLoginSubmit(event);
+});
+$("partnerLogoutBtn")?.addEventListener("click", () => {
+  void handlePartnerLogout();
+});
+$("partnerDeniedSignOutBtn")?.addEventListener("click", () => {
+  void handlePartnerLogout();
+});
 
 $("resetDemo").addEventListener("click", resetDemoState);
 $("setupPayoutsBtn")?.addEventListener("click", () => {

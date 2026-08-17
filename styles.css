@@ -3170,6 +3170,114 @@ body.partner-active .topbar .pintdrop-logo-text small {
   display: none;
 }
 
+body.partner-login-active footer,
+body.partner-login-active .topbar nav {
+  display: none;
+}
+
+body.partner-login-active main {
+  padding-top: 10px;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+}
+
+.partner-auth-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.partner-login,
+.partner-access-denied {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0 40px;
+}
+
+.partner-login-card {
+  width: min(100%, 420px);
+  padding: 28px 24px 24px;
+  text-align: center;
+}
+
+.pintdrop-mark--partner-login {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  display: block;
+}
+
+.partner-login-title {
+  margin: 0 0 8px;
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
+.partner-login-lead {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.partner-login-form {
+  display: grid;
+  gap: 14px;
+  text-align: left;
+}
+
+.partner-login-form .field span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.partner-login-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  font: inherit;
+}
+
+.partner-login-error {
+  margin: 0;
+  color: #ffb4b4;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.partner-login-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.partner-logout-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.partner-logout-btn:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .partner-pilot-header {
   display: flex;
   align-items: center;
