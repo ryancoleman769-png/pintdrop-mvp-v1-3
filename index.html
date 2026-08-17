@@ -414,6 +414,43 @@
         <button id="setupPayoutsBtn" type="button" class="partner-payouts-btn">Set up payouts</button>
       </section>
 
+      <section id="partnerMenuSetup" class="card partner-menu-card">
+        <div class="partner-section-head">
+          <h2>Drinks &amp; prices</h2>
+        </div>
+        <p class="partner-menu-lead">Set what customers can buy at your pub.</p>
+        <form id="partnerMenuForm" class="partner-menu-form">
+          <div id="partnerMenuItems" class="partner-menu-items"></div>
+          <div id="partnerMenuBarTab" class="partner-menu-bar-tab">
+            <label class="partner-menu-toggle">
+              <input type="checkbox" id="partnerMenuOfferBarTab" />
+              <span>Offer Bar Tab</span>
+            </label>
+            <div id="partnerMenuBarTabFields" class="partner-menu-bar-tab-fields hidden">
+              <label class="partner-menu-price-field">
+                <span class="partner-menu-currency">€</span>
+                <input
+                  type="number"
+                  id="partnerMenuBarTabPrice"
+                  min="0.01"
+                  max="500"
+                  step="0.01"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                />
+              </label>
+              <label class="partner-menu-toggle partner-menu-toggle-inline">
+                <input type="checkbox" id="partnerMenuBarTabActive" />
+                <span>Available</span>
+              </label>
+            </div>
+          </div>
+          <p id="partnerMenuError" class="partner-menu-message partner-menu-message--error hidden" role="alert"></p>
+          <p id="partnerMenuSuccess" class="partner-menu-message partner-menu-message--success hidden" role="status">Drinks &amp; prices saved.</p>
+          <button id="partnerMenuSaveBtn" type="submit" class="primary partner-menu-save-btn">Save drinks &amp; prices</button>
+        </form>
+      </section>
+
       <section class="card partner-scan-card partner-pilot-scan">
         <button id="scanLatestVoucher" type="button" class="partner-scan-primary">SCAN PINTDROP</button>
 

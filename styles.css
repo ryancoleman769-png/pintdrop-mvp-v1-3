@@ -3374,6 +3374,140 @@ body.partner-login-active main {
   border-color: rgba(106, 203, 69, 0.45);
 }
 
+.partner-menu-card {
+  margin-bottom: 20px;
+  padding: 18px 16px;
+}
+
+.partner-menu-lead {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.partner-menu-form {
+  display: grid;
+  gap: 14px;
+}
+
+.partner-menu-items {
+  display: grid;
+  gap: 12px;
+}
+
+.partner-menu-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.partner-menu-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.partner-menu-price-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.partner-menu-price-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+}
+
+.partner-menu-price-field input:focus {
+  outline: none;
+}
+
+.partner-menu-currency {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.partner-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.partner-menu-toggle-inline {
+  justify-self: end;
+}
+
+.partner-menu-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+
+.partner-menu-bar-tab {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.partner-menu-bar-tab-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.partner-menu-message {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.partner-menu-message--error {
+  color: #ff8f8f;
+}
+
+.partner-menu-message--success {
+  color: var(--green);
+}
+
+.partner-menu-save-btn {
+  width: 100%;
+  min-height: 52px;
+}
+
+.partner-menu-loading,
+.partner-menu-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+@media (max-width: 520px) {
+  .partner-menu-row,
+  .partner-menu-bar-tab-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .partner-menu-toggle-inline {
+    justify-self: start;
+  }
+}
+
 .partner-scan-primary {
   width: 100%;
   margin: 0 0 18px;

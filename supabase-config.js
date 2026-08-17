@@ -531,11 +531,41 @@ async function fetchMyPubStripeConnectFromSupabase() {
   return data || null;
 }
 
+async function fetchMyPubMenuFromSupabase() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const { data, error } = await client.rpc("get_my_pub_menu");
+  if (error) {
+    console.warn("[PintDrop Partner Menu] fetch failed:", error.message);
+    throw error;
+  }
+
+  return data || null;
+}
+
+async function saveMyPubMenuToSupabase(p_menu) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  const { data, error } = await client.rpc("save_my_pub_menu", { p_menu });
+  if (error) {
+    console.warn("[PintDrop Partner Menu] save failed:", error.message);
+    return { ok: false, error: error.message || "Could not save your menu." };
+  }
+
+  return { ok: true, menu: data || null };
+}
+
 window.PintDropSupabase.PartnerAuth = {
   signIn: signInPartner,
   signOut: signOutPartner,
   getSession: getPartnerSession,
   onAuthStateChange: onPartnerAuthStateChange,
   fetchProfile: fetchMyPartnerProfileFromSupabase,
-  fetchStripeConnect: fetchMyPubStripeConnectFromSupabase
+  fetchStripeConnect: fetchMyPubStripeConnectFromSupabase,
+  fetchMenu: fetchMyPubMenuFromSupabase,
+  saveMenu: saveMyPubMenuToSupabase
 };

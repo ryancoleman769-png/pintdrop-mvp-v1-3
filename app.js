@@ -143,6 +143,8 @@ let partnerQrDecodeContext = null;
 let partnerQrDecodeInFlight = false;
 let partnerZxingReader = null;
 let partnerStripeConnectData = null;
+let partnerMenuData = null;
+let partnerMenuLoading = false;
 let partnerSession = null;
 let partnerProfile = null;
 let partnerAuthReady = false;
@@ -2347,6 +2349,8 @@ function clearPartnerSessionState() {
   partnerSession = null;
   partnerProfile = null;
   partnerStripeConnectData = null;
+  partnerMenuData = null;
+  partnerMenuLoading = false;
 }
 
 async function applyPartnerSession(session) {
@@ -2629,6 +2633,244 @@ async function startPartnerPayoutSetup() {
   }
 }
 
+function normalizePartnerMenuError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+
+  if (!message) return "Could not save your menu. Please try again.";
+  if (lower.includes("partner authentication required")) return "Please sign in to continue.";
+  if (lower.includes("invalid drink type")) return "Invalid drink selection.";
+  if (lower.includes("duplicate menu item")) return "Duplicate drink entries are not allowed.";
+  if (lower.includes("invalid price")) return "Enter a valid price for each available drink.";
+  if (lower.includes("price is required")) return "Enter a price for each available drink.";
+  if (lower.includes("at least one standard drink")) return "Make at least one standard drink available.";
+  if (lower.includes("enable bar tab")) return "Turn on Offer Bar Tab before configuring it.";
+  if (lower.includes("too many menu items")) return "Too many menu items.";
+  if (lower.includes("at least one drink is required")) return "Add at least one drink.";
+
+  return message;
+}
+
+function formatPartnerMenuPrice(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const price = Number(value);
+  if (!Number.isFinite(price) || price <= 0) return "";
+  return price.toFixed(2);
+}
+
+function renderPartnerMenuForm() {
+  const list = $("partnerMenuItems");
+  const barTabBlock = $("partnerMenuBarTab");
+  if (!list) return;
+
+  if (partnerMenuLoading) {
+    list.innerHTML = `<p class="partner-menu-loading">Loading menu…</p>`;
+    return;
+  }
+
+  if (!partnerMenuData) {
+    list.innerHTML = `<p class="partner-menu-empty">Menu could not be loaded.</p>`;
+    return;
+  }
+
+  const items = Array.isArray(partnerMenuData.items) ? partnerMenuData.items : [];
+  const standardItems = items.filter(item => !item.is_bar_tab);
+
+  list.innerHTML = standardItems.map((item) => {
+    const priceValue = formatPartnerMenuPrice(item.price);
+    const activeChecked = item.active ? "checked" : "";
+    return `
+      <div class="partner-menu-row" data-menu-slug="${item.slug}">
+        <span class="partner-menu-name">${item.name}</span>
+        <label class="partner-menu-price-field">
+          <span class="partner-menu-currency">€</span>
+          <input
+            type="number"
+            min="0.01"
+            max="500"
+            step="0.01"
+            inputmode="decimal"
+            placeholder="0.00"
+            value="${priceValue}"
+            data-menu-price="${item.slug}"
+          />
+        </label>
+        <label class="partner-menu-toggle partner-menu-toggle-inline">
+          <input type="checkbox" data-menu-active="${item.slug}" ${activeChecked} />
+          <span>Available</span>
+        </label>
+      </div>
+    `;
+  }).join("");
+
+  const tabItem = items.find(item => item.is_bar_tab) || null;
+  const offersBarTab = Boolean(partnerMenuData.offers_bar_tab);
+  if (barTabBlock) {
+    const offerCheckbox = $("partnerMenuOfferBarTab");
+    const fields = $("partnerMenuBarTabFields");
+    const priceInput = $("partnerMenuBarTabPrice");
+    const activeInput = $("partnerMenuBarTabActive");
+
+    if (offerCheckbox) offerCheckbox.checked = offersBarTab;
+    if (fields) fields.classList.toggle("hidden", !offersBarTab);
+    if (priceInput) priceInput.value = formatPartnerMenuPrice(tabItem?.price);
+    if (activeInput) activeInput.checked = Boolean(tabItem?.active);
+  }
+}
+
+function collectPartnerMenuPayload() {
+  const items = [];
+  const standardRows = document.querySelectorAll("#partnerMenuItems .partner-menu-row");
+
+  standardRows.forEach((row) => {
+    const slug = row.getAttribute("data-menu-slug");
+    const priceInput = row.querySelector(`[data-menu-price="${slug}"]`);
+    const activeInput = row.querySelector(`[data-menu-active="${slug}"]`);
+    const active = Boolean(activeInput?.checked);
+    const rawPrice = String(priceInput?.value || "").trim();
+
+    const item = { slug, active };
+    if (rawPrice) item.price = Number(rawPrice);
+    items.push(item);
+  });
+
+  const offersBarTab = Boolean($("partnerMenuOfferBarTab")?.checked);
+  if (offersBarTab) {
+    const rawTabPrice = String($("partnerMenuBarTabPrice")?.value || "").trim();
+    const tabItem = {
+      slug: "tab",
+      active: Boolean($("partnerMenuBarTabActive")?.checked)
+    };
+    if (rawTabPrice) tabItem.price = Number(rawTabPrice);
+    items.push(tabItem);
+  }
+
+  return { offers_bar_tab: offersBarTab, items };
+}
+
+function validatePartnerMenuPayload(payload) {
+  const items = payload?.items || [];
+  const standardActive = items.filter(item => item.slug !== "tab" && item.active);
+
+  if (!standardActive.length) {
+    return "Make at least one standard drink available.";
+  }
+
+  for (const item of items) {
+    if (!item.active) continue;
+    if (!Number.isFinite(item.price) || item.price <= 0 || item.price > 500) {
+      return "Enter a valid price for each available drink (€0.01–€500).";
+    }
+  }
+
+  if (payload.offers_bar_tab) {
+    const tab = items.find(item => item.slug === "tab");
+    if (tab?.active && (!Number.isFinite(tab.price) || tab.price <= 0 || tab.price > 500)) {
+      return "Enter a valid Bar Tab price (€0.01–€500).";
+    }
+  }
+
+  return "";
+}
+
+async function loadPartnerMenu() {
+  partnerMenuData = null;
+  partnerMenuLoading = false;
+
+  if (!hasActivePartnerProfile()) {
+    renderPartnerMenuForm();
+    return;
+  }
+
+  const auth = getPartnerAuthApi();
+  if (!auth?.fetchMenu) {
+    renderPartnerMenuForm();
+    return;
+  }
+
+  partnerMenuLoading = true;
+  renderPartnerMenuForm();
+
+  const errorEl = $("partnerMenuError");
+  if (errorEl) {
+    errorEl.classList.add("hidden");
+    errorEl.textContent = "";
+  }
+
+  try {
+    partnerMenuData = await auth.fetchMenu();
+  } catch (error) {
+    console.warn("[PintDrop Partner Menu] Load failed:", error);
+    partnerMenuData = null;
+    if (errorEl) {
+      errorEl.textContent = normalizePartnerMenuError(error);
+      errorEl.classList.remove("hidden");
+    }
+  } finally {
+    partnerMenuLoading = false;
+  }
+
+  renderPartnerMenuForm();
+}
+
+async function handlePartnerMenuSave(event) {
+  event.preventDefault();
+
+  const auth = getPartnerAuthApi();
+  const errorEl = $("partnerMenuError");
+  const successEl = $("partnerMenuSuccess");
+  const submitBtn = $("partnerMenuSaveBtn");
+  const payload = collectPartnerMenuPayload();
+  const validationError = validatePartnerMenuPayload(payload);
+
+  if (errorEl) {
+    errorEl.classList.add("hidden");
+    errorEl.textContent = "";
+  }
+  if (successEl) successEl.classList.add("hidden");
+
+  if (validationError) {
+    if (errorEl) {
+      errorEl.textContent = validationError;
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  if (!auth?.saveMenu) {
+    if (errorEl) {
+      errorEl.textContent = "Menu saving is not available.";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving…";
+  }
+
+  const result = await auth.saveMenu(payload);
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Save drinks & prices";
+  }
+
+  if (!result.ok) {
+    if (errorEl) {
+      errorEl.textContent = normalizePartnerMenuError(result.error);
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  partnerMenuData = result.menu || partnerMenuData;
+  renderPartnerMenuForm();
+
+  if (successEl) successEl.classList.remove("hidden");
+}
+
 async function renderPartner() {
   await ensurePartnerAuthReady();
 
@@ -2673,6 +2915,7 @@ async function renderPartner() {
     pubNameEl.textContent = partnerProfile.pub_name;
   }
 
+  await loadPartnerMenu();
   await loadPartnerVouchers();
   const vouchers = getPartnerVouchers();
 
@@ -2963,6 +3206,14 @@ $("partnerDeniedSignOutBtn")?.addEventListener("click", () => {
 $("resetDemo").addEventListener("click", resetDemoState);
 $("setupPayoutsBtn")?.addEventListener("click", () => {
   void startPartnerPayoutSetup();
+});
+
+$("partnerMenuOfferBarTab")?.addEventListener("change", (event) => {
+  $("partnerMenuBarTabFields")?.classList.toggle("hidden", !event.target.checked);
+});
+
+$("partnerMenuForm")?.addEventListener("submit", (event) => {
+  void handlePartnerMenuSave(event);
 });
 
 document.querySelectorAll("[data-partner-history-filter]").forEach(btn => {
