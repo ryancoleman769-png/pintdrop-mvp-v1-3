@@ -2917,8 +2917,10 @@ async function handlePartnerLoginSubmit(event) {
     return;
   }
 
+  setPartnerShiftExpiry();
   const result = await auth.signIn(email, password);
   if (!result.ok) {
+    clearPartnerShiftExpiry();
     if (errorEl) {
       errorEl.textContent = result.error || "Sign in failed.";
       errorEl.classList.remove("hidden");
@@ -2930,7 +2932,6 @@ async function handlePartnerLoginSubmit(event) {
     return;
   }
 
-  setPartnerShiftExpiry();
   await applyPartnerSession(result.session || (await auth.getSession()));
   if (submitBtn) {
     submitBtn.disabled = false;
