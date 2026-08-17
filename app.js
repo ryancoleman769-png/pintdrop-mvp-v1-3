@@ -140,6 +140,11 @@ let partnerQrDecodeCanvas = null;
 let partnerQrDecodeContext = null;
 let partnerQrDecodeInFlight = false;
 let partnerZxingReader = null;
+let partnerStripeConnectData = null;
+let partnerSession = null;
+let partnerProfile = null;
+let partnerAuthReady = false;
+let partnerAuthUnsubscribe = null;
 
 const $ = (id) => document.getElementById(id);
 const money = (value) => new Intl.NumberFormat("en-IE", {
@@ -2257,42 +2262,242 @@ function computePeriodSummary(vouchers, period) {
   };
 }
 
-async function refreshPartnerPayoutStatus() {
+function getPartnerAuthApi() {
+  return window.PintDropSupabase?.PartnerAuth || null;
+}
+
+function setPartnerPanelVisibility({
+  loading = false,
+  login = false,
+  denied = false,
+  dashboard = false
+} = {}) {
+  $("partnerAuthLoading")?.classList.toggle("hidden", !loading);
+  $("partnerLogin")?.classList.toggle("hidden", !login);
+  $("partnerAccessDenied")?.classList.toggle("hidden", !denied);
+  $("partnerDashboard")?.classList.toggle("hidden", !dashboard);
+  const onPartnerView = $("partner")?.classList.contains("active");
+  document.body.classList.toggle(
+    "partner-login-active",
+    onPartnerView && (loading || login || denied)
+  );
+}
+
+function clearPartnerSessionState() {
+  partnerSession = null;
+  partnerProfile = null;
+  partnerStripeConnectData = null;
+}
+
+async function applyPartnerSession(session) {
+  partnerSession = session || null;
+  partnerProfile = null;
+  partnerStripeConnectData = null;
+
+  if (!partnerSession) {
+    clearPartnerSessionState();
+    return "logged_out";
+  }
+
+  const auth = getPartnerAuthApi();
+  if (!auth?.fetchProfile) {
+    clearPartnerSessionState();
+    return "denied";
+  }
+
+  const profile = await auth.fetchProfile();
+  if (!profile?.pub_id) {
+    partnerProfile = null;
+    return "needs_registration";
+  }
+
+  partnerProfile = profile;
+  return "logged_in";
+}
+
+async function handlePartnerAuthStateChange(session) {
+  await applyPartnerSession(session);
+  if ($("partner")?.classList.contains("active")) {
+    void renderPartner();
+  }
+}
+
+async function initPartnerAuth() {
+  if (partnerAuthReady) return;
+
+  const auth = getPartnerAuthApi();
+  if (!auth) {
+    partnerAuthReady = true;
+    return;
+  }
+
+  if (!partnerAuthUnsubscribe && auth.onAuthStateChange) {
+    partnerAuthUnsubscribe = auth.onAuthStateChange((session) => {
+      void handlePartnerAuthStateChange(session);
+    });
+  }
+
+  const session = await auth.getSession();
+  await applyPartnerSession(session);
+  partnerAuthReady = true;
+}
+
+async function ensurePartnerAuthReady() {
+  if (partnerAuthReady) return;
+  await initPartnerAuth();
+}
+
+function hasActivePartnerProfile() {
+  return Boolean(
+    partnerSession
+    && partnerProfile
+    && Number.isFinite(Number(partnerProfile.pub_id))
+    && Number(partnerProfile.pub_id) > 0
+  );
+}
+
+function getPartnerAccessToken() {
+  return partnerSession?.access_token || null;
+}
+
+function buildPartnerConnectRequestInit(body = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const accessToken = getPartnerAccessToken();
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  return {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body || {})
+  };
+}
+
+function normalizePartnerStripeConnectData(data) {
+  if (!data) return null;
+
+  return {
+    stripe_payouts_ready: data.stripe_payouts_ready === true || data.stripePayoutsReady === true,
+    stripe_onboarding_status: String(
+      data.stripe_onboarding_status || data.stripeOnboardingStatus || "not_started"
+    ).trim().toLowerCase(),
+    stripe_account_id: data.stripe_account_id || data.stripeAccountId || null,
+    active: data.active,
+    onboarding_status: data.onboarding_status || data.onboardingStatus || null
+  };
+}
+
+function applyPartnerPayoutStatusUi(data) {
   const status = $("stripeConnectStatus");
   if (!status) return;
 
+  const normalized = normalizePartnerStripeConnectData(data);
+  if (!normalized) return;
+
+  if (normalized.stripe_payouts_ready) {
+    status.textContent = "Payout setup: Payouts ready";
+    setPartnerPayoutsAction(true);
+    return;
+  }
+
+  setPartnerPayoutsAction(false);
+
+  if (normalized.stripe_onboarding_status === "not_started") {
+    status.textContent = "Payout setup: Not started";
+    return;
+  }
+
+  status.textContent = "Payout setup: Setup incomplete";
+}
+
+function isPartnerStripeConnectReturn() {
+  const params = new URLSearchParams(location.search);
+  return params.get("connect") === "return";
+}
+
+function clearPartnerConnectReturnParam() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("connect") !== "return") return;
+
+  params.delete("connect");
+  const query = params.toString();
+  history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
+}
+
+async function fetchPartnerAccountStatus() {
+  const response = await fetch(
+    "/api/stripe-connect/account-status",
+    buildPartnerConnectRequestInit({})
+  );
+
+  let data = {};
   try {
-    const response = await fetch("/api/stripe-connect/account-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pubId: PARTNER_SUPABASE_PUB_ID })
-    });
+    data = await response.json();
+  } catch (error) {
+    console.warn("[PintDrop Stripe Connect] Invalid account-status response:", error);
+  }
 
-    let data = {};
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || "Could not load payout status.");
+  }
+
+  return data;
+}
+
+async function refreshPartnerPayoutStatus(options = {}) {
+  const status = $("stripeConnectStatus");
+  if (!status || !hasActivePartnerProfile()) return;
+
+  partnerStripeConnectData = null;
+  const forceLiveSync = options.forceLiveSync === true || isPartnerStripeConnectReturn();
+
+  let rpcData = null;
+  const auth = getPartnerAuthApi();
+  if (auth?.fetchStripeConnect) {
     try {
-      data = await response.json();
+      rpcData = await auth.fetchStripeConnect();
     } catch (error) {
-      console.warn("[PintDrop Stripe Connect] Invalid account-status response:", error);
+      console.warn("[PintDrop Partner Auth] Stripe connect fetch failed:", error);
     }
+  }
 
-    if (!response.ok || !data?.ok) {
-      throw new Error(data?.error || "Could not load payout status.");
-    }
+  const normalizedRpc = normalizePartnerStripeConnectData(rpcData);
+  const shouldLiveSync =
+    forceLiveSync
+    || (
+      Boolean(normalizedRpc?.stripe_account_id)
+      && !normalizedRpc?.stripe_payouts_ready
+    );
 
-    if (data.stripePayoutsReady === true) {
-      status.textContent = "Payout setup: Payouts ready";
-      setPartnerPayoutsAction(true);
+  if (shouldLiveSync && getPartnerAccessToken()) {
+    try {
+      const data = await fetchPartnerAccountStatus();
+      partnerStripeConnectData = normalizePartnerStripeConnectData(data);
+      applyPartnerPayoutStatusUi(data);
+      if (isPartnerStripeConnectReturn()) {
+        clearPartnerConnectReturnParam();
+      }
       return;
+    } catch (error) {
+      console.warn("[PintDrop Stripe Connect] Live payout status refresh failed:", error);
     }
+  }
 
-    setPartnerPayoutsAction(false);
+  if (rpcData) {
+    partnerStripeConnectData = normalizedRpc;
+    applyPartnerPayoutStatusUi(rpcData);
+    return;
+  }
 
-    if (data.stripeOnboardingStatus === "not_started") {
-      status.textContent = "Payout setup: Not started";
-      return;
-    }
+  if (!getPartnerAccessToken()) {
+    return;
+  }
 
-    status.textContent = "Payout setup: Setup incomplete";
+  try {
+    const data = await fetchPartnerAccountStatus();
+    partnerStripeConnectData = normalizePartnerStripeConnectData(data);
+    applyPartnerPayoutStatusUi(data);
   } catch (error) {
     console.warn("[PintDrop Stripe Connect] Payout status refresh failed:", error);
   }
@@ -2317,17 +2522,21 @@ function setPartnerPayoutsAction(ready) {
 async function startPartnerPayoutSetup() {
   const button = $("setupPayoutsBtn");
   const status = $("stripeConnectStatus");
-  if (!button || button.disabled) return;
+  if (!button || button.disabled || !hasActivePartnerProfile()) return;
+
+  if (!getPartnerAccessToken()) {
+    if (status) status.textContent = "Please sign in again to set up payouts.";
+    return;
+  }
 
   button.disabled = true;
   if (status) status.textContent = "Opening Stripe payout setup…";
 
   try {
-    const response = await fetch("/api/stripe-connect/account-link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pubId: PARTNER_SUPABASE_PUB_ID })
-    });
+    const response = await fetch(
+      "/api/stripe-connect/account-link",
+      buildPartnerConnectRequestInit({})
+    );
 
     let data = {};
     try {
@@ -2351,6 +2560,49 @@ async function startPartnerPayoutSetup() {
 }
 
 async function renderPartner() {
+  await ensurePartnerAuthReady();
+
+  if (!getPartnerAuthApi()) {
+    setPartnerPanelVisibility({ login: true });
+    const errorEl = $("partnerLoginError");
+    if (errorEl) {
+      errorEl.textContent = "Partner login is not configured.";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  if (!partnerAuthReady) {
+    setPartnerPanelVisibility({ loading: true });
+    return;
+  }
+
+  if (!partnerSession) {
+    setPartnerPanelVisibility({ login: true });
+    return;
+  }
+
+  const sessionState = partnerProfile?.pub_id
+    ? "logged_in"
+    : (await applyPartnerSession(partnerSession));
+
+  if (sessionState === "needs_registration" || sessionState === "denied") {
+    setPartnerPanelVisibility({ denied: true });
+    return;
+  }
+
+  if (sessionState !== "logged_in") {
+    setPartnerPanelVisibility({ login: true });
+    return;
+  }
+
+  setPartnerPanelVisibility({ dashboard: true });
+
+  const pubNameEl = $("partnerDashboardPubName");
+  if (pubNameEl && partnerProfile?.pub_name) {
+    pubNameEl.textContent = partnerProfile.pub_name;
+  }
+
   await loadPartnerVouchers();
   const vouchers = getPartnerVouchers();
 
@@ -2565,6 +2817,76 @@ async function resetDemoState() {
   renderSms();
 }
 
+async function handlePartnerLoginSubmit(event) {
+  event.preventDefault();
+
+  const auth = getPartnerAuthApi();
+  const email = $("partnerLoginEmail")?.value || "";
+  const password = $("partnerLoginPassword")?.value || "";
+  const errorEl = $("partnerLoginError");
+  const submitBtn = $("partnerLoginBtn");
+
+  if (errorEl) {
+    errorEl.classList.add("hidden");
+    errorEl.textContent = "";
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Signing in…";
+  }
+
+  if (!auth?.signIn) {
+    if (errorEl) {
+      errorEl.textContent = "Partner login is not available.";
+      errorEl.classList.remove("hidden");
+    }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Log in";
+    }
+    return;
+  }
+
+  const result = await auth.signIn(email, password);
+  if (!result.ok) {
+    if (errorEl) {
+      errorEl.textContent = result.error || "Sign in failed.";
+      errorEl.classList.remove("hidden");
+    }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Log in";
+    }
+    return;
+  }
+
+  await applyPartnerSession(result.session || (await auth.getSession()));
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Log in";
+  }
+  void renderPartner();
+}
+
+async function handlePartnerLogout() {
+  const auth = getPartnerAuthApi();
+  if (auth?.signOut) {
+    await auth.signOut();
+  }
+  clearPartnerSessionState();
+  void renderPartner();
+}
+
+$("partnerLoginForm")?.addEventListener("submit", (event) => {
+  void handlePartnerLoginSubmit(event);
+});
+$("partnerLogoutBtn")?.addEventListener("click", () => {
+  void handlePartnerLogout();
+});
+$("partnerDeniedSignOutBtn")?.addEventListener("click", () => {
+  void handlePartnerLogout();
+});
+
 $("resetDemo").addEventListener("click", resetDemoState);
 $("setupPayoutsBtn")?.addEventListener("click", () => {
   void startPartnerPayoutSetup();
@@ -2598,7 +2920,14 @@ if (sessionStorage.getItem("pintdrop_splash_seen")) {
   seedPartnerDemoData();
   await applyDemoDefaults();
   $("pubSearch")?.addEventListener("input", (event) => filterPubList(event.target.value));
-  await renderPartner();
+  await initPartnerAuth();
+
+  const params = new URLSearchParams(location.search);
+  if (params.get("view") === "partner") {
+    dismissSplash();
+    switchView("partner");
+  }
+
   renderSms();
 
   const handledStripeReturn = await handleStripeReturn();
