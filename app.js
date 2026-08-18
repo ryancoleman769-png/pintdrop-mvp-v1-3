@@ -50,12 +50,12 @@ async function loadPubs() {
 }
 
 const DEMO_GIFTS = [
-  { id: "pint", name: "Pint", price: 6.50, icon: "🍺" },
-  { id: "wine", name: "Glass of Wine", price: 6.50, icon: "🍷" },
-  { id: "cocktail", name: "Cocktail", price: 8.50, icon: "🍸" },
-  { id: "spirit", name: "Spirit & Mixer", price: 6.50, icon: "🥃" },
+  { id: "pint", name: "Pint", price: 6.00, icon: "🍺" },
+  { id: "wine", name: "Glass of Wine", price: 7.00, icon: "🍷" },
+  { id: "cocktail", name: "Cocktail", price: 10.00, icon: "🍸" },
+  { id: "spirit", name: "Spirit & Mixer", price: 9.00, icon: "🥃" },
   { id: "soft", name: "Soft Drink", price: 3.50, icon: "🥤" },
-  { id: "tab", name: "€20 Bar Tab", price: 20.50, icon: "💶" }
+  { id: "tab", name: "€20 Bar Tab", price: 20.00, icon: "💶" }
 ];
 
 let gifts = DEMO_GIFTS.map(gift => ({ ...gift }));
