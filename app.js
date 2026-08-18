@@ -140,9 +140,11 @@ const PARTNER_DRINK_SUPABASE_IDS = {
 };
 const PARTNER_DEMO_SEED_KEY = "pintdrop_partner_demo_seeded";
 const PARTNER_SHIFT_STORAGE_KEY = "pintdrop_partner_shift";
+const PARTNER_PENDING_REDEEM_KEY = "pintdrop_partner_pending_redeem";
 const PARTNER_SHIFT_DURATION_MS = 12 * 60 * 60 * 1000;
 
 let partnerVouchers = null;
+let partnerVouchersLoadError = null;
 let publicVoucherDisplay = null;
 let partnerQrScanActive = false;
 let partnerQrScanHandling = false;
@@ -439,30 +441,56 @@ function getPartnerVouchers() {
   return readVouchers().filter(isPartnerVoucher);
 }
 
+function normalizePartnerHistoryError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+
+  if (!message) return "Could not load recent redemptions. Please try again.";
+  if (lower.includes("partner authentication required")) return "Please sign in again to view redemptions.";
+  if (lower.includes("permission denied")) {
+    return "Recent redemptions are unavailable right now. Please contact PintDrop support.";
+  }
+  return message;
+}
+
+function mergePartnerVouchersWithLocalDemo(remote) {
+  const local = readVouchers().filter(isPartnerVoucher);
+  const remoteByCode = new Map(remote.map(voucher => [voucher.code.toUpperCase(), voucher]));
+  const demoOnly = local.filter(voucher => !remoteByCode.has(voucher.code.toUpperCase()));
+  return [...remote, ...demoOnly]
+    .sort((a, b) => new Date(getVoucherActivityTime(b)) - new Date(getVoucherActivityTime(a)));
+}
+
 async function loadPartnerVouchers() {
   const local = readVouchers().filter(isPartnerVoucher);
+  partnerVouchersLoadError = null;
 
   if (!window.PintDropSupabase?.isConfigured?.()) {
     partnerVouchers = local;
     return partnerVouchers;
   }
 
-  try {
-    const remote = await window.PintDropSupabase.fetchPartnerVouchers(PARTNER_SUPABASE_PUB_ID);
-    if (!remote?.length) {
-      partnerVouchers = local;
+  if (hasActivePartnerProfile()) {
+    const auth = getPartnerAuthApi();
+    if (!auth?.fetchVouchers) {
+      partnerVouchersLoadError = "Recent redemptions are not available in this build.";
+      partnerVouchers = [];
       return partnerVouchers;
     }
 
-    const remoteByCode = new Map(remote.map(voucher => [voucher.code.toUpperCase(), voucher]));
-    const demoOnly = local.filter(voucher => !remoteByCode.has(voucher.code.toUpperCase()));
-    partnerVouchers = [...remote, ...demoOnly]
-      .sort((a, b) => new Date(getVoucherActivityTime(b)) - new Date(getVoucherActivityTime(a)));
-  } catch (error) {
-    console.warn("[PintDrop] Using local partner vouchers after Supabase error:", error);
-    partnerVouchers = local;
+    try {
+      const remote = await auth.fetchVouchers();
+      partnerVouchers = mergePartnerVouchersWithLocalDemo(Array.isArray(remote) ? remote : []);
+      return partnerVouchers;
+    } catch (error) {
+      console.warn("[PintDrop Partner Vouchers] Load failed:", error);
+      partnerVouchersLoadError = normalizePartnerHistoryError(error);
+      partnerVouchers = [];
+      return partnerVouchers;
+    }
   }
 
+  partnerVouchers = local;
   return partnerVouchers;
 }
 
@@ -471,6 +499,90 @@ function isVoucherForPartnerPub(voucher) {
   if (voucher.pub.id === PARTNER_PUB_ID) return true;
   if (voucher.pub.supabaseId === PARTNER_SUPABASE_PUB_ID) return true;
   return false;
+}
+
+function isBarTabVoucher(voucher) {
+  if (!voucher) return false;
+  const giftId = String(voucher.gift?.id || "").toLowerCase();
+  if (giftId === "tab") return true;
+  return String(voucher.gift?.name || "").toLowerCase().includes("bar tab");
+}
+
+function storePendingPartnerRedemption(code) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!normalized) return;
+  try {
+    sessionStorage.setItem(PARTNER_PENDING_REDEEM_KEY, normalized);
+  } catch (error) {
+    console.warn("[PintDrop Partner Redemption] Could not store pending code:", error);
+  }
+}
+
+function consumePendingPartnerRedemption() {
+  try {
+    const code = sessionStorage.getItem(PARTNER_PENDING_REDEEM_KEY);
+    sessionStorage.removeItem(PARTNER_PENDING_REDEEM_KEY);
+    return code || null;
+  } catch {
+    return null;
+  }
+}
+
+function showPartnerLoginRedemptionNotice(code) {
+  const errorEl = $("partnerLoginError");
+  if (errorEl) {
+    errorEl.textContent = code
+      ? `Sign in to redeem voucher ${code}.`
+      : "Sign in to redeem this voucher.";
+    errorEl.classList.remove("hidden");
+  }
+  if ($("redeemCode") && code) {
+    $("redeemCode").value = code;
+  }
+}
+
+function normalizePartnerRedemptionError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+
+  if (!message) return "Could not redeem this voucher. Please try again.";
+  if (lower.includes("partner authentication required")) {
+    return "Please sign in to redeem vouchers.";
+  }
+  if (lower.includes("expired")) return "This voucher has expired and cannot be redeemed.";
+  if (lower.includes("bar tab")) {
+    return "Bar Tab vouchers must be redeemed with an amount from the partner dashboard.";
+  }
+  if (lower.includes("permission denied")) {
+    return "Redemption is unavailable right now. Please contact PintDrop support.";
+  }
+  return message;
+}
+
+async function findPartnerVoucherByCode(code) {
+  const normalized = (code || "").trim().toUpperCase();
+  if (!normalized) return null;
+
+  if (window.PintDropSupabase?.isConfigured?.()) {
+    if (!hasActivePartnerProfile()) {
+      return null;
+    }
+
+    const auth = getPartnerAuthApi();
+    if (!auth?.fetchVoucherForRedemption) {
+      throw new Error("Partner voucher lookup is not available in this build.");
+    }
+
+    return auth.fetchVoucherForRedemption(normalized);
+  }
+
+  return readVouchers().find(v => v.code.toUpperCase() === normalized) || null;
+}
+
+async function resumePendingPartnerRedemptionIfAny() {
+  const code = consumePendingPartnerRedemption();
+  if (!code || !hasActivePartnerProfile()) return;
+  await processBarRedemption(code, { updateHash: true });
 }
 
 function formatDate(value) {
@@ -977,24 +1089,62 @@ async function openRecipientVoucherView(code, { updateHash = true } = {}) {
 
 async function processBarRedemption(code, { updateHash = true } = {}) {
   dismissSplash();
-  const voucher = await findVoucherByCode(code);
   redemptionJustConfirmed = false;
+
+  const normalizedCode = (code || "").trim().toUpperCase();
+  if (!normalizedCode) return;
+
+  if (window.PintDropSupabase?.isConfigured?.() && !hasActivePartnerProfile()) {
+    storePendingPartnerRedemption(normalizedCode);
+    if (updateHash) setBarRedemptionHash(normalizedCode);
+    switchView("partner");
+    await ensurePartnerAuthReady();
+    setPartnerPanelVisibility({ login: true });
+    showPartnerLoginRedemptionNotice(normalizedCode);
+    return;
+  }
+
+  let voucher = null;
+  try {
+    voucher = await findPartnerVoucherByCode(normalizedCode);
+  } catch (error) {
+    console.warn("[PintDrop Partner Redemption] Lookup failed:", error);
+    activeRedemptionVoucherId = null;
+    activeRedemptionVoucher = null;
+    if (updateHash) setBarRedemptionHash(normalizedCode);
+    switchView("redemption");
+    renderRedemptionLookupError(normalizePartnerRedemptionError(error));
+    return;
+  }
 
   if (!voucher) {
     activeRedemptionVoucherId = null;
     activeRedemptionVoucher = null;
-    if (updateHash) setBarRedemptionHash(code);
+    if (updateHash) setBarRedemptionHash(normalizedCode);
     switchView("redemption");
     renderRedemptionNotFound();
     return;
   }
 
-  if (!isVoucherForPartnerPub(voucher)) {
+  if (!window.PintDropSupabase?.isConfigured?.() && !isVoucherForPartnerPub(voucher)) {
     activeRedemptionVoucherId = null;
     activeRedemptionVoucher = null;
     if (updateHash) setBarRedemptionHash(voucher.code);
     switchView("redemption");
     renderRedemptionWrongPub(voucher);
+    return;
+  }
+
+  if (isBarTabVoucher(voucher)) {
+    activeRedemptionVoucherId = voucher.id;
+    activeRedemptionVoucher = voucher;
+    if (updateHash) setBarRedemptionHash(voucher.code);
+    switchView("redemption");
+    renderRedemptionScreen(voucher, {
+      barMode: true,
+      redeemFailed: true,
+      errorMessage: "Bar Tab vouchers must be redeemed with an amount from the partner dashboard."
+    });
     return;
   }
 
@@ -1008,20 +1158,24 @@ async function processBarRedemption(code, { updateHash = true } = {}) {
     return;
   }
 
-  const redeemed = await redeemVoucherById(voucher.id);
-  if (!redeemed) {
-    renderRedemptionScreen(voucher, { barMode: true, redeemFailed: true });
+  const result = await redeemVoucherById(voucher.id);
+  if (!result.ok) {
+    renderRedemptionScreen(voucher, {
+      barMode: true,
+      redeemFailed: true,
+      errorMessage: result.error
+    });
     return;
   }
 
-  activeRedemptionVoucher = redeemed;
+  activeRedemptionVoucher = result.voucher;
   redemptionJustConfirmed = true;
   partnerVouchers = null;
-  renderRedemptionScreen(redeemed, { barMode: true });
+  renderRedemptionScreen(result.voucher, { barMode: true });
   await renderPartner();
   renderVoucher();
   renderSms();
-  showSenderNotification(redeemed);
+  showSenderNotification(result.voucher);
 }
 
 function stopPartnerQrDecodeLoop() {
@@ -1297,6 +1451,15 @@ function renderRedemptionNotFound() {
   $("redemptionConfirm")?.classList.add("hidden");
 }
 
+function renderRedemptionLookupError(message) {
+  document.querySelector(".redemption-page")?.querySelectorAll(
+    ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-actions"
+  ).forEach(el => el.classList.add("hidden"));
+  $("redemptionEmptyMessage").textContent = message || "Could not look up this voucher.";
+  $("redemptionEmpty")?.classList.remove("hidden");
+  $("redemptionConfirm")?.classList.add("hidden");
+}
+
 function renderRedemptionWrongPub(voucher) {
   document.querySelector(".redemption-page")?.querySelectorAll(
     ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-actions"
@@ -1307,7 +1470,7 @@ function renderRedemptionWrongPub(voucher) {
   $("redemptionConfirm")?.classList.add("hidden");
 }
 
-function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false } = {}) {
+function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false, errorMessage = null } = {}) {
   $("redemptionEmpty")?.classList.add("hidden");
   document.querySelector(".redemption-page")?.querySelectorAll(
     ".redemption-header, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-actions"
@@ -1347,7 +1510,7 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
     statusEl.textContent = "ERROR";
     statusEl.className = "redemption-status redemption-status-hero status redeemed";
     alreadyBanner.classList.add("hidden");
-    successEl.textContent = "Could not redeem this voucher. Try again.";
+    successEl.textContent = errorMessage || "Could not redeem this voucher. Try again.";
     successEl.classList.remove("hidden");
     $("redemptionTime").classList.add("hidden");
   } else {
@@ -1377,39 +1540,51 @@ function hideRedemptionConfirm() {
 }
 
 async function redeemVoucherById(voucherId) {
-  const vouchers = readVouchers();
-  const local = vouchers.find(v => v.id === voucherId);
-  const lookupCode = local?.code || activeRedemptionVoucher?.code;
+  const lookupCode = activeRedemptionVoucher?.id === voucherId
+    ? activeRedemptionVoucher.code
+    : null;
 
   if (window.PintDropSupabase?.isConfigured?.()) {
+    if (!hasActivePartnerProfile()) {
+      return { ok: false, error: "Please sign in to redeem vouchers." };
+    }
+
+    const auth = getPartnerAuthApi();
+    if (!auth?.redeemVoucher) {
+      return { ok: false, error: "Partner redemption is not available in this build." };
+    }
+
     try {
-      const remote = await window.PintDropSupabase.redeemVoucher({
+      const remote = await auth.redeemVoucher({
         id: voucherId,
         code: lookupCode
       });
-      if (remote) {
-        if (local) {
-          local.status = "redeemed";
-          local.redeemedAt = remote.redeemedAt;
-          writeVouchers(vouchers);
-        }
-        return remote;
+      if (remote?.status === "redeemed") {
+        return { ok: true, voucher: remote };
       }
-      if (remote === null && !local) {
-        return null;
-      }
+      return {
+        ok: false,
+        error: "This voucher could not be redeemed. It may already be redeemed or invalid."
+      };
     } catch (error) {
-      console.warn("[PintDrop] Supabase voucher redeem error:", error);
+      console.warn("[PintDrop Partner Redemption] redeem error:", error);
+      return { ok: false, error: normalizePartnerRedemptionError(error) };
     }
   }
 
-  if (!local) return null;
-  if (local.status === "redeemed") return local;
+  const vouchers = readVouchers();
+  const local = vouchers.find(v => v.id === voucherId);
+  if (!local) {
+    return { ok: false, error: "Voucher not found." };
+  }
+  if (local.status === "redeemed") {
+    return { ok: true, voucher: local };
+  }
 
   local.status = "redeemed";
   local.redeemedAt = new Date().toISOString();
   writeVouchers(vouchers);
-  return local;
+  return { ok: true, voucher: local };
 }
 
 function buildPendingOrder() {
@@ -2360,6 +2535,8 @@ function clearPartnerSessionState() {
   partnerStripeConnectData = null;
   partnerMenuData = null;
   partnerMenuLoading = false;
+  partnerVouchers = null;
+  partnerVouchersLoadError = null;
 }
 
 async function applyPartnerSession(session) {
@@ -2394,9 +2571,13 @@ async function applyPartnerSession(session) {
 }
 
 async function handlePartnerAuthStateChange(session) {
+  const wasLoggedIn = hasActivePartnerProfile();
   await applyPartnerSession(session);
   if ($("partner")?.classList.contains("active")) {
     void renderPartner();
+  }
+  if (!wasLoggedIn && hasActivePartnerProfile()) {
+    await resumePendingPartnerRedemptionIfAny();
   }
 }
 
@@ -2932,14 +3113,27 @@ async function renderPartner() {
     btn.classList.toggle("active", btn.dataset.partnerHistoryFilter === partnerHistoryFilter);
   });
 
+  const historyErrorEl = $("partnerHistoryError");
+  if (historyErrorEl) {
+    if (partnerVouchersLoadError) {
+      historyErrorEl.textContent = partnerVouchersLoadError;
+      historyErrorEl.classList.remove("hidden");
+    } else {
+      historyErrorEl.textContent = "";
+      historyErrorEl.classList.add("hidden");
+    }
+  }
+
   const activity = vouchers
     .filter(v => v.status === "redeemed")
     .filter(v => voucherMatchesPeriod(v, partnerHistoryFilter))
     .sort((a, b) => new Date(getVoucherActivityTime(b)) - new Date(getVoucherActivityTime(a)));
 
-  $("activityList").innerHTML = activity.length
-    ? activity.map(voucher => partnerRedemptionItem(voucher)).join("")
-    : `<p class="note partner-history-empty">No redemptions for this period.</p>`;
+  $("activityList").innerHTML = partnerVouchersLoadError
+    ? ""
+    : (activity.length
+      ? activity.map(voucher => partnerRedemptionItem(voucher)).join("")
+      : `<p class="note partner-history-empty">No redemptions for this period.</p>`);
 
   void refreshPartnerPayoutStatus();
 }
@@ -3003,9 +3197,13 @@ async function completeRedemption(voucherId) {
     return;
   }
 
-  const voucher = await redeemVoucherById(voucherId);
-  if (!voucher) return;
+  const result = await redeemVoucherById(voucherId);
+  if (!result.ok) {
+    $("redeemResult").innerHTML = `<div class="result error">${result.error}</div>`;
+    return;
+  }
 
+  const voucher = result.voucher;
   activeRedemptionVoucher = voucher;
 
   $("redeemResult").innerHTML = `
@@ -3075,9 +3273,17 @@ $("redemptionConfirmOk")?.addEventListener("click", async () => {
     return;
   }
 
-  const voucher = await redeemVoucherById(activeRedemptionVoucherId);
-  if (!voucher) return;
+  const result = await redeemVoucherById(activeRedemptionVoucherId);
+  if (!result.ok) {
+    renderRedemptionScreen(before, {
+      barMode: true,
+      redeemFailed: true,
+      errorMessage: result.error
+    });
+    return;
+  }
 
+  const voucher = result.voucher;
   activeRedemptionVoucher = voucher;
 
   redemptionJustConfirmed = true;
@@ -3189,7 +3395,8 @@ async function handlePartnerLoginSubmit(event) {
     submitBtn.disabled = false;
     submitBtn.textContent = "Log in";
   }
-  void renderPartner();
+  await renderPartner();
+  await resumePendingPartnerRedemptionIfAny();
 }
 
 async function handlePartnerLogout() {

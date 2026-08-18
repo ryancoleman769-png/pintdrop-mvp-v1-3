@@ -246,21 +246,52 @@ async function createVoucherInSupabase(voucher) {
   return mapSupabaseVoucherRow(data);
 }
 
-async function redeemVoucherInSupabase({ id, code } = {}) {
+async function fetchVoucherForPartnerRedemptionFromSupabase(code) {
   const client = getSupabaseClient();
-  if (!client || (!id && !code)) return null;
-
-  const { data, error } = await client.rpc("redeem_voucher", {
-    p_id: id || null,
-    p_code: code || null
-  });
-
-  if (error) {
-    console.warn("[PintDrop] Supabase voucher redeem failed:", error.message);
+  if (!client) {
+    throw new Error("Supabase is not configured.");
+  }
+  if (!code?.trim()) {
     return null;
   }
 
+  const { data, error } = await client.rpc("get_voucher_for_partner_redemption", {
+    p_code: code.trim()
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Redemption] lookup failed:", error.message);
+    throw new Error(error.message || "Could not look up voucher.");
+  }
+
   return mapSupabaseVoucherRow(data);
+}
+
+async function redeemVoucherForPartnerFromSupabase({ id, code } = {}) {
+  const client = getSupabaseClient();
+  if (!client) {
+    throw new Error("Supabase is not configured.");
+  }
+  if (!id && !code?.trim()) {
+    throw new Error("Voucher id or code is required.");
+  }
+
+  const { data, error } = await client.rpc("redeem_voucher_for_partner", {
+    p_id: id || null,
+    p_code: code?.trim() || null
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Redemption] redeem failed:", error.message);
+    throw new Error(error.message || "Could not redeem voucher.");
+  }
+
+  const mapped = mapSupabaseVoucherRow(data);
+  if (!mapped || mapped.status !== "redeemed") {
+    throw new Error("This voucher could not be redeemed. It may already be redeemed or invalid.");
+  }
+
+  return mapped;
 }
 
 async function fetchPartnerVouchersFromSupabase(pubId) {
@@ -282,7 +313,6 @@ async function fetchPartnerVouchersFromSupabase(pubId) {
 
 window.PintDropSupabase.fetchVoucherByCode = fetchVoucherByCodeFromSupabase;
 window.PintDropSupabase.createVoucher = createVoucherInSupabase;
-window.PintDropSupabase.redeemVoucher = redeemVoucherInSupabase;
 window.PintDropSupabase.mapVoucherRow = mapSupabaseVoucherRow;
 window.PintDropSupabase.fetchPartnerVouchers = fetchPartnerVouchersFromSupabase;
 
@@ -530,6 +560,21 @@ async function fetchMyPubStripeConnectFromSupabase() {
   return data || null;
 }
 
+function normalizePartnerRpcJsonArray(data) {
+  if (data == null) return [];
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) return parsed;
+      return parsed ? [parsed] : [];
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(data)) return data;
+  return [data];
+}
+
 async function fetchMyPubMenuFromSupabase() {
   const client = getSupabaseClient();
   if (!client) return null;
@@ -541,6 +586,23 @@ async function fetchMyPubMenuFromSupabase() {
   }
 
   return data || null;
+}
+
+async function fetchMyPubVouchersFromSupabase() {
+  const client = getSupabaseClient();
+  if (!client) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const { data, error } = await client.rpc("get_my_pub_vouchers");
+  if (error) {
+    console.warn("[PintDrop Partner Vouchers] fetch failed:", error.message);
+    throw new Error(error.message || "Could not load your redemptions.");
+  }
+
+  return normalizePartnerRpcJsonArray(data)
+    .map(mapSupabaseVoucherRow)
+    .filter(Boolean);
 }
 
 async function saveMyPubMenuToSupabase(p_menu) {
@@ -566,5 +628,8 @@ window.PintDropSupabase.PartnerAuth = {
   fetchProfile: fetchMyPartnerProfileFromSupabase,
   fetchStripeConnect: fetchMyPubStripeConnectFromSupabase,
   fetchMenu: fetchMyPubMenuFromSupabase,
+  fetchVouchers: fetchMyPubVouchersFromSupabase,
+  fetchVoucherForRedemption: fetchVoucherForPartnerRedemptionFromSupabase,
+  redeemVoucher: redeemVoucherForPartnerFromSupabase,
   saveMenu: saveMyPubMenuToSupabase
 };
