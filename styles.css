@@ -2358,15 +2358,30 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 }
 .redemption-already-banner {
   margin: 0 0 16px;
-  padding: 14px 16px;
-  border-radius: 14px;
+  padding: 18px 16px;
+  border-radius: 16px;
   text-align: center;
+  display: grid;
+  gap: 6px;
+  color: #ffffff;
+  background: linear-gradient(180deg, #c62828 0%, #8b0000 100%);
+  border: 3px solid #ff5252;
+  box-shadow: 0 8px 28px rgba(198, 40, 40, 0.45);
+}
+.redemption-already-banner__title {
+  display: block;
   font-weight: 900;
-  font-size: 0.92rem;
-  letter-spacing: 0.08em;
-  color: #1f2421;
-  background: #d5d9d6;
-  border: 2px solid rgba(255, 255, 255, 0.12);
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.redemption-already-banner__subtitle {
+  display: block;
+  font-weight: 900;
+  font-size: 1.35rem;
+  letter-spacing: 0.18em;
+  line-height: 1.1;
 }
 .redemption-status-wrap {
   text-align: center;
@@ -2387,6 +2402,10 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 .redemption-status.redeemed {
   color: #1f2421;
   background: #d5d9d6;
+}
+.redemption-status.redeemed-success {
+  color: #07120d;
+  background: var(--green);
 }
 .redemption-gift-block {
   text-align: center;
@@ -2457,13 +2476,16 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 }
 .redemption-success {
   margin: 0 0 16px;
-  padding: 14px;
+  padding: 16px;
   border-radius: 14px;
   text-align: center;
-  color: #d7ffc4;
+  color: #ffffff;
   font-weight: 800;
-  background: rgba(106, 203, 69, 0.22);
-  border: 2px solid rgba(106, 203, 69, 0.45);
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  background: linear-gradient(180deg, #5fbf2a 0%, #3d8f14 100%);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 28px rgba(106, 203, 69, 0.35);
 }
 .redemption-actions {
   display: grid;
@@ -3689,6 +3711,14 @@ body.partner-login-active main {
 
 .redemption-status-hero.redeemed {
   box-shadow: none;
+}
+.redemption-status-hero.redeemed-success {
+  box-shadow: 0 8px 28px rgba(106, 203, 69, 0.35);
+}
+.redemption-status-hero.redeemed-blocked {
+  color: #ffffff;
+  background: #8b0000;
+  box-shadow: 0 8px 28px rgba(198, 40, 40, 0.35);
 }
 
 .redemption-status-hero.waiting {

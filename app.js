@@ -1490,15 +1490,15 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
   const alreadyBanner = $("redemptionAlreadyBanner");
 
   if (redemptionJustConfirmed && isRedeemed) {
-    statusEl.textContent = "REDEEMED";
-    statusEl.className = "redemption-status redemption-status-hero status redeemed";
+    statusEl.textContent = "✅ REDEEMED";
+    statusEl.className = "redemption-status redemption-status-hero status redeemed redeemed-success";
     alreadyBanner.classList.add("hidden");
     successEl.textContent = `${voucher.gift.name} redeemed successfully.`;
     successEl.classList.remove("hidden");
     $("redemptionTime").classList.add("hidden");
   } else if (isRedeemed) {
-    statusEl.textContent = "REDEEMED";
-    statusEl.className = "redemption-status redemption-status-hero status redeemed";
+    statusEl.textContent = "❌ ALREADY REDEEMED";
+    statusEl.className = "redemption-status redemption-status-hero status redeemed redeemed-blocked";
     alreadyBanner.classList.remove("hidden");
     successEl.classList.add("hidden");
     $("redemptionTime").classList.toggle("hidden", !voucher.redeemedAt);
