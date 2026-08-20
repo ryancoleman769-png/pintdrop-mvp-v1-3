@@ -479,7 +479,7 @@ async function loadPartnerVouchers() {
 
     try {
       const remote = await auth.fetchVouchers();
-      partnerVouchers = mergePartnerVouchersWithLocalDemo(Array.isArray(remote) ? remote : []);
+      partnerVouchers = Array.isArray(remote) ? remote : [];
       return partnerVouchers;
     } catch (error) {
       console.warn("[PintDrop Partner Vouchers] Load failed:", error);
