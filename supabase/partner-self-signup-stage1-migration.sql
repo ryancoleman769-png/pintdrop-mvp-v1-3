@@ -534,7 +534,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.admin_reject_pub(
   p_pub_id bigint,
-  p_reason text DEFAULT NULL,
+  p_rejection_reason text DEFAULT NULL,
   p_rejected_by text DEFAULT 'pintdrop-admin'
 )
 RETURNS json
@@ -544,7 +544,7 @@ SET search_path = public
 AS $$
 DECLARE
   result json;
-  v_reason text := nullif(trim(coalesce(p_reason, '')), '');
+  v_reason text := nullif(trim(coalesce(p_rejection_reason, '')), '');
 BEGIN
   IF p_pub_id IS NULL OR p_pub_id <= 0 THEN
     RAISE EXCEPTION 'pub_id is required';
