@@ -9,8 +9,10 @@
 --   • Removes registration_user_id column + unique index
 --   • Does NOT delete pubs, drinks, or pub_partner_users rows created while Stage 1 was live
 --     (those remain as draft/inactive data — safe for customer listings)
+--   • Does NOT re-apply NOT NULL on drinks.price (left nullable so any draft NULL prices remain valid)
 --   • Does NOT drop is_pub_customer_ready (may pre-exist from onboarding migration)
 --   • Does NOT touch get_my_pub_menu / save_my_pub_menu
+--   • Does NOT modify existing live pub drink prices
 
 BEGIN;
 

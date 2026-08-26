@@ -10,8 +10,8 @@
 --   • public.pub_stripe_payouts_ready(...)
 --   • public.drinks (per-pub rows: slug, name, icon, price, active, sort_order)
 --   • Live menu RPCs get_my_pub_menu / save_my_pub_menu (NOT redefined here —
---     source SQL is not in the main repo; Stage 1 only seeds drink rows to match
---     the observed live template: pint, wine, cocktail, spirit, tab)
+--     source SQL is not in the main repo; Stage 1 only seeds inactive drink rows
+--     with NULL prices for: pint, wine, cocktail, spirit, tab)
 --
 -- PRODUCTION SAFETY:
 --   • Additive columns + new/replaced RPCs only
@@ -99,11 +99,17 @@ REVOKE ALL ON FUNCTION public.generate_unique_pub_slug(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.generate_unique_pub_slug(text) TO service_role;
 
 -- =============================================================================
--- 3. Seed standard drink/menu rows for a pub (matches live pub 6/8 template)
---    Observed live structure (NOT copied from get_my_pub_menu source SQL):
---      pint, wine, cocktail, spirit, tab — names/icons/sort_order as in Production
---    New pubs start inactive so partners must configure via save_my_pub_menu.
+-- 3. Seed standard drink/menu rows for a new pub (structure only — no prices)
+--    Template slugs/names/icons/sort_order match the live catalog shape
+--    (pint, wine, cocktail, spirit, tab). Prices are NOT copied from any pub.
+--    Rows start active=false with price=NULL so partners must enter prices.
+--    Bar Tab stays off via pubs.offers_bar_tab=false on register + tab inactive.
 -- =============================================================================
+
+-- Allow unconfigured prices on draft menus. Safe for existing rows (values kept).
+-- If price is already nullable this is a no-op structurally.
+ALTER TABLE public.drinks
+  ALTER COLUMN price DROP NOT NULL;
 
 CREATE OR REPLACE FUNCTION public.seed_standard_pub_drinks(p_pub_id bigint)
 RETURNS void
@@ -121,16 +127,17 @@ BEGIN
   END IF;
 
   -- Idempotent per (pub_id, slug): skip rows that already exist.
+  -- price NULL + active false = unconfigured until partner saves real prices.
   INSERT INTO public.drinks (pub_id, slug, name, icon, price, active, sort_order)
-  SELECT p_pub_id, t.slug, t.name, t.icon, t.price, t.active, t.sort_order
+  SELECT p_pub_id, t.slug, t.name, t.icon, NULL::numeric, false, t.sort_order
   FROM (
     VALUES
-      ('pint',    'Pint',            '🍺', 6.00::numeric, false, 1),
-      ('wine',    'Glass of Wine',   '🍷', 7.00::numeric, false, 2),
-      ('cocktail','Cocktail',        '🍸', 10.00::numeric, false, 3),
-      ('spirit',  'Spirit & Mixer',  '🥃', 9.00::numeric, false, 4),
-      ('tab',     'Bar Tab',         '💶', 20.00::numeric, false, 5)
-  ) AS t(slug, name, icon, price, active, sort_order)
+      ('pint',     'Pint',           '🍺', 1),
+      ('wine',     'Glass of Wine',  '🍷', 2),
+      ('cocktail', 'Cocktail',       '🍸', 3),
+      ('spirit',   'Spirit & Mixer', '🥃', 4),
+      ('tab',      'Bar Tab',        '💶', 5)
+  ) AS t(slug, name, icon, sort_order)
   WHERE NOT EXISTS (
     SELECT 1
     FROM public.drinks d
