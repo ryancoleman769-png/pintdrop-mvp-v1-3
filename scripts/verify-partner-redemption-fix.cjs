@@ -114,11 +114,17 @@ if (
 if (appJs.includes("isBarTabVoucher")) pass("Bar Tab detection present");
 else fail("Bar Tab detection present");
 
-if (appJs.includes("isLegacyPartialBarTabVoucher")) pass("Legacy partial Bar Tab isolated from fixed presets");
-else fail("Legacy partial Bar Tab isolated from fixed presets");
+if (appJs.includes("redeemBarTabById") && appJs.includes("auth.redeemBarTab")) {
+  pass("Bar Tabs use redeemBarTab partial path");
+} else {
+  fail("Bar Tabs use redeemBarTab partial path");
+}
 
-if (appJs.includes("Bar Tab vouchers must be redeemed")) pass("Legacy Bar Tab amount-redemption copy present");
-else fail("Legacy Bar Tab amount-redemption copy present");
+if (appJs.includes("Amount is more than the remaining balance.")) {
+  pass("Over-balance copy present");
+} else {
+  fail("Over-balance copy present");
+}
 
 if (appJs.includes("auth.fetchVouchers")) pass("Recent redemptions uses authenticated fetchVouchers");
 else fail("Recent redemptions uses authenticated fetchVouchers");

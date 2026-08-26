@@ -211,6 +211,10 @@ function mapSupabaseVoucherRow(row) {
   const pubSlug = PUB_SLUG_BY_SUPABASE_ID[row.pub_id] || `pub-${row.pub_id}`;
   const assets = PUB_LOCAL_ASSETS[pubSlug] || {};
 
+  const originalBalance = row.bar_tab_original_balance;
+  const remainingBalance = row.bar_tab_remaining_balance;
+  const totalRedeemed = row.bar_tab_total_redeemed;
+
   return {
     id: row.id,
     code: row.code,
@@ -246,6 +250,12 @@ function mapSupabaseVoucherRow(row) {
     expiresAt: row.expires_at,
     status: row.status,
     redeemedAt: row.redeemed_at,
+    barTab: {
+      original: originalBalance == null ? null : Number(originalBalance),
+      remaining: remainingBalance == null ? null : Number(remainingBalance),
+      totalRedeemed: totalRedeemed == null ? null : Number(totalRedeemed),
+      redemptions: Array.isArray(row.bar_tab_redemptions) ? row.bar_tab_redemptions : []
+    },
     source: "supabase"
   };
 }
@@ -346,6 +356,48 @@ async function redeemVoucherForPartnerFromSupabase({ id, code } = {}) {
   }
 
   return mapped;
+}
+
+async function redeemBarTabForPartnerFromSupabase({ id, code, amount } = {}) {
+  const client = getSupabaseClient();
+  if (!client) {
+    throw new Error("Supabase is not configured.");
+  }
+  if (!id && !code?.trim()) {
+    throw new Error("Voucher id or code is required.");
+  }
+
+  const parsedAmount = Number(amount);
+  if (!Number.isFinite(parsedAmount)) {
+    throw new Error("A redemption amount is required.");
+  }
+
+  const { data, error } = await client.rpc("redeem_bar_tab_for_partner", {
+    p_id: id || null,
+    p_code: code?.trim() || null,
+    p_amount: parsedAmount
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Redemption] Bar Tab redeem failed:", error.message);
+    throw new Error(error.message || "Could not redeem Bar Tab.");
+  }
+
+  const payload = normalizeInvokeData(data);
+  if (!payload) {
+    throw new Error("This Bar Tab could not be redeemed. It may already be fully redeemed or invalid.");
+  }
+
+  const voucherRow = payload.voucher || payload;
+  const mapped = mapSupabaseVoucherRow(voucherRow);
+  if (!mapped) {
+    throw new Error("This Bar Tab could not be redeemed. It may already be fully redeemed or invalid.");
+  }
+
+  return {
+    voucher: mapped,
+    redemption: payload.redemption || null
+  };
 }
 
 async function fetchPartnerVouchersFromSupabase(pubId) {
@@ -808,5 +860,6 @@ window.PintDropSupabase.PartnerAuth = {
   fetchVouchers: fetchMyPubVouchersFromSupabase,
   fetchVoucherForRedemption: fetchVoucherForPartnerRedemptionFromSupabase,
   redeemVoucher: redeemVoucherForPartnerFromSupabase,
+  redeemBarTab: redeemBarTabForPartnerFromSupabase,
   saveMenu: saveMyPubMenuToSupabase
 };

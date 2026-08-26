@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260826-fixed-tab-redeem" />
+  <link rel="stylesheet" href="styles.css?v=20260826-bar-tab-balances" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -270,6 +270,21 @@
 
                 <blockquote id="smsWalletMessage" class="sms-wallet-message"></blockquote>
 
+                <div id="smsWalletBarTabPanel" class="bar-tab-balance-panel hidden">
+                  <div class="bar-tab-balance-row">
+                    <span>Original</span>
+                    <strong id="smsWalletBarTabOriginal">€0.00</strong>
+                  </div>
+                  <div class="bar-tab-balance-row">
+                    <span>Redeemed</span>
+                    <strong id="smsWalletBarTabRedeemed">€0.00</strong>
+                  </div>
+                  <div class="bar-tab-balance-row bar-tab-balance-row--remaining">
+                    <span>Remaining</span>
+                    <strong id="smsWalletBarTabRemaining">€0.00</strong>
+                  </div>
+                </div>
+
                 <div class="pass-qr sms-wallet-qr" id="smsWalletQrArea">
                   <div class="scan-line"></div>
                   <div class="qr-wrap" aria-label="PintDrop voucher QR code">
@@ -329,6 +344,21 @@
               </div>
             </div>
             <blockquote id="voucherMessage" class="pass-message"></blockquote>
+          </div>
+
+          <div id="voucherBarTabPanel" class="bar-tab-balance-panel hidden">
+            <div class="bar-tab-balance-row">
+              <span>Original</span>
+              <strong id="voucherBarTabOriginal">€0.00</strong>
+            </div>
+            <div class="bar-tab-balance-row">
+              <span>Redeemed</span>
+              <strong id="voucherBarTabRedeemed">€0.00</strong>
+            </div>
+            <div class="bar-tab-balance-row bar-tab-balance-row--remaining">
+              <span>Remaining</span>
+              <strong id="voucherBarTabRemaining">€0.00</strong>
+            </div>
           </div>
 
           <div class="pass-qr-section">
@@ -646,6 +676,28 @@
         <p id="redemptionTime" class="redemption-time hidden"></p>
         <p id="redemptionSuccess" class="redemption-success hidden">Pint redeemed successfully.</p>
 
+        <div id="redemptionBarTabPanel" class="redemption-bar-tab-panel hidden">
+          <div class="redemption-bar-tab-row">
+            <span>Original balance</span>
+            <strong id="redemptionBarTabOriginal">€0.00</strong>
+          </div>
+          <div class="redemption-bar-tab-row">
+            <span>Redeemed so far</span>
+            <strong id="redemptionBarTabRedeemed">€0.00</strong>
+          </div>
+          <div class="redemption-bar-tab-row">
+            <span>Remaining balance</span>
+            <strong id="redemptionBarTabRemaining">€0.00</strong>
+          </div>
+          <label class="redemption-bar-tab-amount-field" id="redemptionBarTabAmountWrap">
+            <span>Amount to redeem</span>
+            <input id="redemptionBarTabAmount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" />
+          </label>
+          <p id="redemptionBarTabError" class="redemption-bar-tab-error hidden" role="alert"></p>
+          <p id="redemptionBarTabSuccess" class="redemption-bar-tab-success hidden" role="status"></p>
+          <button id="redemptionBarTabRedeemBtn" type="button" class="primary redemption-redeem-btn">Redeem</button>
+        </div>
+
         <div class="redemption-actions">
           <button id="redemptionRedeemBtn" type="button" class="primary redemption-redeem-btn">REDEEM PINT</button>
           <button id="redemptionBackBtn" type="button" class="secondary redemption-back-btn">← Back to dashboard</button>
@@ -696,7 +748,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260826-fixed-tab-redeem"></script>
-  <script src="app.js?v=20260826-fixed-tab-redeem"></script>
+  <script src="supabase-config.js?v=20260826-bar-tab-balances"></script>
+  <script src="app.js?v=20260826-bar-tab-balances"></script>
 </body>
 </html>

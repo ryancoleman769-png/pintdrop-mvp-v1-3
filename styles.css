@@ -2487,6 +2487,80 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   border: 2px solid rgba(255, 255, 255, 0.22);
   box-shadow: 0 8px 28px rgba(106, 203, 69, 0.35);
 }
+.redemption-bar-tab-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+.redemption-bar-tab-panel.hidden {
+  display: none;
+}
+.redemption-bar-tab-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.95rem;
+}
+.redemption-bar-tab-row span {
+  color: var(--muted);
+}
+.redemption-bar-tab-row strong {
+  font-size: 1.05rem;
+}
+.bar-tab-balance-panel {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+}
+.bar-tab-balance-panel.hidden {
+  display: none;
+}
+.bar-tab-balance-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.95rem;
+}
+.bar-tab-balance-row span {
+  color: var(--muted);
+}
+.bar-tab-balance-row--remaining strong {
+  font-size: 1.1rem;
+}
+.redemption-bar-tab-amount-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.redemption-bar-tab-amount-field input {
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.redemption-bar-tab-error {
+  margin: 0;
+  color: #ffb4b4;
+  font-weight: 700;
+}
+.redemption-bar-tab-success {
+  margin: 0;
+  color: #b7f08a;
+  font-weight: 700;
+}
 .redemption-actions {
   display: grid;
   gap: 12px;
