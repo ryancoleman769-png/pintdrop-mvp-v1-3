@@ -55,15 +55,13 @@ const DEMO_GIFTS = [
   { id: "cocktail", name: "Cocktail", price: 10.00, icon: "🍸" },
   { id: "spirit", name: "Spirit & Mixer", price: 9.00, icon: "🥃" },
   { id: "tab-20", name: "€20 Bar Tab", price: 20.00, icon: "💶" },
-  { id: "tab-30", name: "€30 Bar Tab", price: 30.00, icon: "💶" },
-  { id: "tab-40", name: "€40 Bar Tab", price: 40.00, icon: "💶" },
-  { id: "tab-50", name: "€50 Bar Tab", price: 50.00, icon: "💶" }
+  { id: "tab-30", name: "€30 Bar Tab", price: 30.00, icon: "💶" }
 ];
 
-const BAR_TAB_PRESETS = window.PintDropSupabase?.BAR_TAB_PRESET_PRICES || [20, 30, 40, 50];
+const BAR_TAB_PRESETS = window.PintDropSupabase?.BAR_TAB_PRESET_PRICES || [20, 30];
 
 function barTabPresetFromSlug(slug) {
-  const match = /^tab-(20|30|40|50)$/.exec(String(slug || "").trim().toLowerCase());
+  const match = /^tab-(20|30)$/.exec(String(slug || "").trim().toLowerCase());
   return match ? Number(match[1]) : null;
 }
 
@@ -73,7 +71,7 @@ function isExactBarTabPreset(price) {
 
 function isBarTabSlug(slug) {
   const value = String(slug || "").trim().toLowerCase();
-  return value === "tab" || barTabPresetFromSlug(value) != null;
+  return value === "tab" || value.startsWith("tab-");
 }
 
 function isBarTabGift(gift) {
@@ -3130,7 +3128,7 @@ function normalizePartnerMenuError(error) {
   if (lower.includes("price is required")) return "Enter a price for each available drink.";
   if (lower.includes("at least one standard drink")) return "Make at least one standard drink available.";
   if (lower.includes("enable bar tab")) return "Turn on Offer Bar Tab before configuring it.";
-  if (lower.includes("choose at least one bar tab amount")) return "Choose at least one Bar Tab amount (€20, €30, €40 or €50).";
+  if (lower.includes("choose at least one bar tab amount")) return "Choose at least one Bar Tab amount (€20 or €30).";
   if (lower.includes("too many menu items")) return "Too many menu items.";
   if (lower.includes("at least one drink is required")) return "Add at least one drink.";
 
@@ -3201,7 +3199,7 @@ function updatePartnerBarTabLegacyNotice() {
     return;
   }
 
-  notice.textContent = "Your saved Bar Tab amount isn’t €20, €30, €40 or €50. Choose one or more of those amounts to keep offering Bar Tab. The old amount is left unchanged until you save.";
+  notice.textContent = "Your saved Bar Tab amount isn’t €20 or €30. Choose one or both of those amounts to keep offering Bar Tab. The old amount is left unchanged until you save.";
   notice.classList.remove("hidden");
 }
 
@@ -3321,7 +3319,7 @@ function validatePartnerMenuPayload(payload) {
       item.active && BAR_TAB_PRESETS.includes(barTabPresetFromSlug(item.slug))
     ));
     if (!selectedPresets.length) {
-      return "Choose at least one Bar Tab amount (€20, €30, €40 or €50).";
+      return "Choose at least one Bar Tab amount (€20 or €30).";
     }
   }
 

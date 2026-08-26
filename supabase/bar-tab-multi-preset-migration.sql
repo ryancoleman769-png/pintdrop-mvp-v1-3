@@ -9,7 +9,7 @@
 --   • save_my_pub_menu / get_my_pub_menu / _partner_menu_catalog only allow slug 'tab'
 --
 -- THIS MIGRATION:
---   • Adds catalog slugs tab-20 / tab-30 / tab-40 / tab-50 (one drinks row per amount)
+--   • Adds catalog slugs tab-20 / tab-30 (one drinks row per amount)
 --   • Keeps legacy slug 'tab' so existing rows are not rewritten
 --   • Does not UPDATE or DELETE existing drink prices
 --   • Does not change Stripe, vouchers, redemption, signup, or pub isolation
@@ -23,7 +23,7 @@ RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
 AS $$
-  SELECT coalesce(p_slug, '') IN ('tab', 'tab-20', 'tab-30', 'tab-40', 'tab-50')
+  SELECT coalesce(p_slug, '') IN ('tab', 'tab-20', 'tab-30')
       OR coalesce(p_slug, '') LIKE 'tab-%';
 $$;
 
@@ -47,9 +47,7 @@ AS $$
     ('spirit',   'Spirit & Mixer', '🥃', 4, false),
     ('tab',      'Bar Tab',        '💶', 5, true),
     ('tab-20',   '€20 Bar Tab',    '💶', 6, true),
-    ('tab-30',   '€30 Bar Tab',    '💶', 7, true),
-    ('tab-40',   '€40 Bar Tab',    '💶', 8, true),
-    ('tab-50',   '€50 Bar Tab',    '💶', 9, true)
+    ('tab-30',   '€30 Bar Tab',    '💶', 7, true)
   ) AS catalog(slug, name, icon, sort_order, is_bar_tab);
 $$;
 
@@ -170,7 +168,7 @@ BEGIN
     RAISE EXCEPTION 'At least one drink is required';
   END IF;
 
-  IF jsonb_array_length(v_items) > 10 THEN
+  IF jsonb_array_length(v_items) > 8 THEN
     RAISE EXCEPTION 'Too many menu items';
   END IF;
 
@@ -202,7 +200,7 @@ BEGIN
 
     v_active := coalesce((v_item ->> 'active')::boolean, false);
 
-    IF v_slug IN ('tab-20', 'tab-30', 'tab-40', 'tab-50') THEN
+    IF v_slug IN ('tab-20', 'tab-30') THEN
       IF v_active THEN
         v_price := split_part(v_slug, '-', 2)::numeric;
         v_preset_active_count := v_preset_active_count + 1;
@@ -302,7 +300,7 @@ BEGIN
   END IF;
 
   IF v_offers_bar_tab AND v_preset_active_count < 1 THEN
-    RAISE EXCEPTION 'Choose at least one Bar Tab amount (€20, €30, €40 or €50).';
+    RAISE EXCEPTION 'Choose at least one Bar Tab amount (€20 or €30).';
   END IF;
 
   UPDATE public.pubs

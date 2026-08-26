@@ -43,11 +43,11 @@ window.PintDropSupabase = {
   getClient: getSupabaseClient
 };
 
-const BAR_TAB_PRESET_PRICES = [20, 30, 40, 50];
+const BAR_TAB_PRESET_PRICES = [20, 30];
 window.PintDropSupabase.BAR_TAB_PRESET_PRICES = BAR_TAB_PRESET_PRICES;
 
 function barTabPresetFromSlug(slug) {
-  const match = /^tab-(20|30|40|50)$/.exec(String(slug || "").trim().toLowerCase());
+  const match = /^tab-(20|30)$/.exec(String(slug || "").trim().toLowerCase());
   return match ? Number(match[1]) : null;
 }
 
@@ -57,7 +57,7 @@ function isExactBarTabPresetPrice(price) {
 
 function isBarTabDrinkRow(row) {
   const slug = String(row?.slug || row?.id || "").trim().toLowerCase();
-  if (slug === "tab" || barTabPresetFromSlug(slug) != null) return true;
+  if (slug === "tab" || slug.startsWith("tab-")) return true;
   return String(row?.name || "").toLowerCase().includes("bar tab");
 }
 
