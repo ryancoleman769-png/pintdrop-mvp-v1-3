@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260826-partner-signup" />
+  <link rel="stylesheet" href="styles.css?v=20260826-partner-submit" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -468,6 +468,17 @@
         <button id="resetDemo" class="partner-reset-btn" type="button" aria-label="Reset session" title="Reset session">↺</button>
       </header>
 
+      <section id="partnerOnboardingCard" class="card partner-onboarding-card hidden">
+        <div class="partner-section-head">
+          <h2>Onboarding</h2>
+        </div>
+        <p id="partnerOnboardingStatus" class="partner-onboarding-status">Status: Draft</p>
+        <p id="partnerOnboardingLead" class="partner-onboarding-lead"></p>
+        <p id="partnerOnboardingError" class="partner-menu-message partner-menu-message--error hidden" role="alert"></p>
+        <p id="partnerOnboardingSuccess" class="partner-menu-message partner-menu-message--success hidden" role="status"></p>
+        <button id="partnerSubmitApprovalBtn" type="button" class="primary partner-onboarding-submit hidden">Submit for approval</button>
+      </section>
+
       <section class="card partner-payouts-card">
         <div class="partner-section-head">
           <h2>Payouts</h2>
@@ -651,7 +662,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260826-partner-signup"></script>
-  <script src="app.js?v=20260826-partner-signup"></script>
+  <script src="supabase-config.js?v=20260826-partner-submit"></script>
+  <script src="app.js?v=20260826-partner-submit"></script>
 </body>
 </html>

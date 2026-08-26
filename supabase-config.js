@@ -702,6 +702,7 @@ window.PintDropSupabase.PartnerAuth = {
   fetchProfile: fetchMyPartnerProfileFromSupabase,
   fetchOnboardingStatus: fetchMyOnboardingStatusFromSupabase,
   registerDraftPub: registerMyDraftPubFromSupabase,
+  submitMyPubForApproval: submitMyPubForApprovalFromSupabase,
   submitForApproval: submitMyPubForApprovalFromSupabase,
   fetchStripeConnect: fetchMyPubStripeConnectFromSupabase,
   fetchMenu: fetchMyPubMenuFromSupabase,

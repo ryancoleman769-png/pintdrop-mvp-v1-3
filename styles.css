@@ -3389,6 +3389,34 @@ body.partner-login-active main {
   padding: 20px 16px;
 }
 
+.partner-onboarding-card {
+  margin-bottom: 20px;
+  padding: 18px 16px;
+}
+
+.partner-onboarding-status {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.partner-onboarding-lead {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.partner-onboarding-card .partner-menu-message {
+  margin: 0 0 12px;
+}
+
+.partner-onboarding-submit {
+  width: 100%;
+  min-height: 52px;
+}
+
 .partner-payouts-card {
   margin-bottom: 20px;
   padding: 18px 16px;
