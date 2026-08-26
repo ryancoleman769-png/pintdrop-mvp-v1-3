@@ -53,9 +53,7 @@ const DEMO_GIFTS = [
   { id: "pint", name: "Pint", price: 6.00, icon: "🍺" },
   { id: "wine", name: "Glass of Wine", price: 7.00, icon: "🍷" },
   { id: "cocktail", name: "Cocktail", price: 10.00, icon: "🍸" },
-  { id: "spirit", name: "Spirit & Mixer", price: 9.00, icon: "🥃" },
-  { id: "tab-20", name: "€20 Bar Tab", price: 20.00, icon: "💶" },
-  { id: "tab-30", name: "€30 Bar Tab", price: 30.00, icon: "💶" }
+  { id: "spirit", name: "Spirit & Mixer", price: 9.00, icon: "🥃" }
 ];
 
 const BAR_TAB_PRESETS = window.PintDropSupabase?.BAR_TAB_PRESET_PRICES || [20, 30];
@@ -80,6 +78,11 @@ function isBarTabGift(gift) {
   return String(gift.name || "").toLowerCase().includes("bar tab");
 }
 
+function hasSavedDrinkSupabaseId(gift) {
+  const supabaseId = Number(gift?.supabaseId);
+  return Number.isFinite(supabaseId) && supabaseId > 0;
+}
+
 function formatBarTabGiftName(price) {
   return `€${price} Bar Tab`;
 }
@@ -94,6 +97,8 @@ function normalizeCustomerGifts(list) {
       return;
     }
     if (gift.active === false || gift.active === 0) return;
+    // Only offer Bar Tab amounts that exist as saved drinks rows for this pub.
+    if (!hasSavedDrinkSupabaseId(gift)) return;
 
     const slugPreset = barTabPresetFromSlug(gift.id || gift.slug);
     const price = Number(gift.price);
@@ -580,6 +585,16 @@ function isBarTabVoucher(voucher) {
   return String(voucher.gift?.name || "").toLowerCase().includes("bar tab");
 }
 
+function isFixedBarTabPresetVoucher(voucher) {
+  if (!voucher?.gift) return false;
+  return barTabPresetFromSlug(voucher.gift.id) != null
+    || barTabPresetFromSlug(voucher.gift.slug) != null;
+}
+
+function isLegacyPartialBarTabVoucher(voucher) {
+  return isBarTabVoucher(voucher) && !isFixedBarTabPresetVoucher(voucher);
+}
+
 function storePendingPartnerRedemption(code) {
   const normalized = String(code || "").trim().toUpperCase();
   if (!normalized) return;
@@ -613,7 +628,7 @@ function showPartnerLoginRedemptionNotice(code) {
   }
 }
 
-function normalizePartnerRedemptionError(error) {
+function normalizePartnerRedemptionError(error, voucher) {
   const message = String(error?.message || error || "").trim();
   const lower = message.toLowerCase();
 
@@ -622,11 +637,21 @@ function normalizePartnerRedemptionError(error) {
     return "Please sign in to redeem vouchers.";
   }
   if (lower.includes("expired")) return "This voucher is not redeemable.";
-  if (lower.includes("bar tab")) {
-    return "Bar Tab vouchers must be redeemed with an amount from the partner dashboard.";
-  }
   if (lower.includes("permission denied")) {
     return "Redemption is unavailable right now. Please contact PintDrop support.";
+  }
+  // Fixed €20/€30 presets redeem like a pint. Do not tell staff to enter an amount.
+  if (isFixedBarTabPresetVoucher(voucher)) {
+    return message;
+  }
+  if (
+    lower.includes("bar tab") &&
+    (lower.includes("amount") ||
+      lower.includes("redeem_bar_tab") ||
+      lower.includes("partial") ||
+      lower.includes("dashboard"))
+  ) {
+    return "Bar Tab vouchers must be redeemed with an amount from the partner dashboard.";
   }
   return message;
 }
@@ -896,6 +921,10 @@ function validatePubStep() {
 function validateGiftStep() {
   if (!selectedGift) {
     showStepError("giftStepError");
+    return false;
+  }
+  if (isBarTabGift(selectedGift) && !hasSavedDrinkSupabaseId(selectedGift)) {
+    showStepError("giftStepError", "That Bar Tab is not available from this pub yet.");
     return false;
   }
   return true;
@@ -1208,7 +1237,7 @@ async function processBarRedemption(code, { updateHash = true } = {}) {
     return;
   }
 
-  if (isBarTabVoucher(voucher)) {
+  if (isLegacyPartialBarTabVoucher(voucher)) {
     activeRedemptionVoucherId = voucher.id;
     activeRedemptionVoucher = voucher;
     if (updateHash) setBarRedemptionHash(voucher.code);
@@ -1641,7 +1670,7 @@ async function redeemVoucherById(voucherId) {
       };
     } catch (error) {
       console.warn("[PintDrop Partner Redemption] redeem error:", error);
-      return { ok: false, error: normalizePartnerRedemptionError(error) };
+      return { ok: false, error: normalizePartnerRedemptionError(error, activeRedemptionVoucher) };
     }
   }
 
@@ -1715,6 +1744,14 @@ function renderReview() {
 
 async function startStripeCheckout() {
   if (!pendingOrder || paymentProcessing) return;
+
+  if (isBarTabGift(pendingOrder.gift) && !hasSavedDrinkSupabaseId(pendingOrder.gift)) {
+    showStepError(
+      "reviewCheckoutError",
+      "That Bar Tab is not available from this pub yet."
+    );
+    return;
+  }
 
   paymentProcessing = true;
   const button = $("goToPayment");
@@ -1908,6 +1945,11 @@ function getCheckoutDrinkId(gift, pub) {
 }
 
 async function createStripeCheckoutSession() {
+  const drinkId = getCheckoutDrinkId(pendingOrder.gift, pendingOrder.pub);
+  if (isBarTabGift(pendingOrder.gift) && (!Number.isFinite(drinkId) || drinkId <= 0)) {
+    throw new Error("That Bar Tab is not available from this pub yet.");
+  }
+
   const response = await fetch("/api/create-checkout-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1916,7 +1958,7 @@ async function createStripeCheckoutSession() {
       giftPrice: pendingOrder.gift.price,
       fee: pendingOrder.fee,
       giftName: pendingOrder.gift.name,
-      drinkId: getCheckoutDrinkId(pendingOrder.gift, pendingOrder.pub),
+      drinkId,
       drinkIcon: pendingOrder.gift.icon,
       pubName: pendingOrder.pub.name,
       pubLocation: pendingOrder.pub.town,
