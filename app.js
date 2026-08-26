@@ -157,6 +157,8 @@ let partnerMenuData = null;
 let partnerMenuLoading = false;
 let partnerSession = null;
 let partnerProfile = null;
+let partnerOnboardingStatus = null;
+let partnerPendingConfirmEmail = "";
 let partnerAuthReady = false;
 let partnerAuthUnsubscribe = null;
 
@@ -2520,22 +2522,29 @@ function setPartnerPanelVisibility({
   loading = false,
   login = false,
   denied = false,
+  register = false,
+  signup = false,
+  confirmEmail = false,
   dashboard = false
 } = {}) {
   $("partnerAuthLoading")?.classList.toggle("hidden", !loading);
   $("partnerLogin")?.classList.toggle("hidden", !login);
   $("partnerAccessDenied")?.classList.toggle("hidden", !denied);
+  $("partnerRegister")?.classList.toggle("hidden", !register);
+  $("partnerSignup")?.classList.toggle("hidden", !signup);
+  $("partnerConfirmEmail")?.classList.toggle("hidden", !confirmEmail);
   $("partnerDashboard")?.classList.toggle("hidden", !dashboard);
   const onPartnerView = $("partner")?.classList.contains("active");
   document.body.classList.toggle(
     "partner-login-active",
-    onPartnerView && (loading || login || denied)
+    onPartnerView && (loading || login || denied || register || signup || confirmEmail)
   );
 }
 
 function clearPartnerSessionState() {
   partnerSession = null;
   partnerProfile = null;
+  partnerOnboardingStatus = null;
   partnerStripeConnectData = null;
   partnerMenuData = null;
   partnerMenuLoading = false;
@@ -2551,6 +2560,7 @@ async function applyPartnerSession(session) {
 
   partnerSession = session || null;
   partnerProfile = null;
+  partnerOnboardingStatus = null;
   partnerStripeConnectData = null;
 
   if (!partnerSession) {
@@ -2565,13 +2575,19 @@ async function applyPartnerSession(session) {
   }
 
   const profile = await auth.fetchProfile();
-  if (!profile?.pub_id) {
-    partnerProfile = null;
-    return "needs_registration";
+  partnerOnboardingStatus = await refreshPartnerOnboardingStatus();
+
+  if (profile?.pub_id) {
+    partnerProfile = profile;
+    return "logged_in";
   }
 
-  partnerProfile = profile;
-  return "logged_in";
+  partnerProfile = null;
+  if (!isPartnerEmailConfirmed()) {
+    return "needs_confirmation";
+  }
+
+  return "needs_registration";
 }
 
 async function handlePartnerAuthStateChange(session) {
@@ -2622,6 +2638,207 @@ function hasActivePartnerProfile() {
     && Number.isFinite(Number(partnerProfile.pub_id))
     && Number(partnerProfile.pub_id) > 0
   );
+}
+
+function isPartnerEmailConfirmed() {
+  if (typeof partnerOnboardingStatus?.email_confirmed === "boolean") {
+    return partnerOnboardingStatus.email_confirmed;
+  }
+  const user = partnerSession?.user;
+  return Boolean(user?.email_confirmed_at || user?.confirmed_at);
+}
+
+async function refreshPartnerOnboardingStatus() {
+  const auth = getPartnerAuthApi();
+  if (!auth?.fetchOnboardingStatus) {
+    partnerOnboardingStatus = null;
+    return null;
+  }
+
+  try {
+    partnerOnboardingStatus = await auth.fetchOnboardingStatus();
+  } catch (error) {
+    console.warn("[PintDrop Partner Auth] onboarding status fetch failed:", error);
+    partnerOnboardingStatus = null;
+  }
+
+  return partnerOnboardingStatus;
+}
+
+function normalizePartnerOnboardingStatusValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getPartnerOnboardingStatusValue() {
+  return normalizePartnerOnboardingStatusValue(
+    partnerOnboardingStatus?.onboarding_status
+    || partnerOnboardingStatus?.onboardingStatus
+    || partnerProfile?.onboarding_status
+    || partnerProfile?.onboardingStatus
+  );
+}
+
+function isSelfSignupOnboardingPub() {
+  const status = getPartnerOnboardingStatusValue();
+  return status === "draft" || status === "pending_approval" || status === "rejected";
+}
+
+function partnerCanSubmitForApproval() {
+  if (!isSelfSignupOnboardingPub()) return false;
+  const status = getPartnerOnboardingStatusValue();
+  if (status !== "draft" && status !== "rejected") return false;
+  if (partnerOnboardingStatus?.active === true || partnerProfile?.active === true) {
+    return false;
+  }
+  return (
+    partnerOnboardingStatus?.can_submit_for_approval === true
+    || partnerOnboardingStatus?.canSubmitForApproval === true
+  );
+}
+
+function formatPartnerOnboardingStatusLabel(status) {
+  switch (normalizePartnerOnboardingStatusValue(status)) {
+    case "draft":
+      return "Draft";
+    case "pending_approval":
+      return "Pending approval";
+    case "rejected":
+      return "Rejected";
+    case "approved":
+      return "Approved";
+    default:
+      return status ? String(status) : "Unknown";
+  }
+}
+
+function partnerOnboardingLeadCopy() {
+  const status = getPartnerOnboardingStatusValue();
+  const checklist = partnerOnboardingStatus?.checklist || {};
+  const rejectionReason = String(
+    partnerOnboardingStatus?.rejection_reason
+    || partnerOnboardingStatus?.rejectionReason
+    || partnerProfile?.rejection_reason
+    || ""
+  ).trim();
+
+  if (status === "pending_approval") {
+    return "PintDrop is reviewing your pub. It stays hidden from customers until it is approved.";
+  }
+  if (status === "rejected") {
+    return rejectionReason
+      ? `Rejected: ${rejectionReason}`
+      : "Your application was not approved. Update your details and submit again when you are ready.";
+  }
+  if (partnerCanSubmitForApproval()) {
+    return "Your pub is still a draft. Submit for PintDrop review when you are ready.";
+  }
+
+  const missing = [];
+  if (checklist.account_verified === false) missing.push("email confirmation");
+  if (checklist.pub_details === false) missing.push("pub details");
+  if (checklist.menu_ready === false) missing.push("drinks & prices");
+  if (checklist.payouts_ready === false) missing.push("payout setup");
+  if (missing.length) {
+    return `Finish ${missing.join(", ")} before you can submit for approval.`;
+  }
+  return "Your pub stays a draft until PintDrop reviews and approves it.";
+}
+
+function showPartnerOnboardingError(message) {
+  const errorEl = $("partnerOnboardingError");
+  if (!errorEl) return;
+  errorEl.textContent = message || "";
+  errorEl.classList.toggle("hidden", !message);
+}
+
+function showPartnerOnboardingSuccess(message) {
+  const successEl = $("partnerOnboardingSuccess");
+  if (!successEl) return;
+  successEl.textContent = message || "";
+  successEl.classList.toggle("hidden", !message);
+}
+
+function setPartnerOnboardingBusy(busy) {
+  const button = $("partnerSubmitApprovalBtn");
+  if (!button) return;
+  button.disabled = busy;
+  button.textContent = busy ? "Submitting…" : "Submit for approval";
+}
+
+function renderPartnerOnboardingCard() {
+  const card = $("partnerOnboardingCard");
+  const statusEl = $("partnerOnboardingStatus");
+  const leadEl = $("partnerOnboardingLead");
+  const submitBtn = $("partnerSubmitApprovalBtn");
+  if (!card) return;
+
+  const showCard = isSelfSignupOnboardingPub();
+  card.classList.toggle("hidden", !showCard);
+  if (!showCard) {
+    showPartnerOnboardingError("");
+    showPartnerOnboardingSuccess("");
+    if (submitBtn) submitBtn.classList.add("hidden");
+    return;
+  }
+
+  const status = getPartnerOnboardingStatusValue();
+  if (statusEl) {
+    statusEl.textContent = `Status: ${formatPartnerOnboardingStatusLabel(status)}`;
+  }
+  if (leadEl) {
+    leadEl.textContent = partnerOnboardingLeadCopy();
+  }
+
+  const canSubmit = partnerCanSubmitForApproval();
+  if (submitBtn) {
+    submitBtn.classList.toggle("hidden", !canSubmit);
+    if (!submitBtn.disabled) {
+      submitBtn.textContent = "Submit for approval";
+    }
+  }
+}
+
+function normalizePartnerSubmitError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+  if (!message) return "Could not submit your pub for approval. Please try again.";
+  if (lower.includes("not complete enough")) {
+    return "Finish drinks, payouts, and pub details before submitting for approval.";
+  }
+  if (lower.includes("partner authentication required")) {
+    return "Please sign in again to submit for approval.";
+  }
+  return message;
+}
+
+async function handlePartnerSubmitForApproval() {
+  const auth = getPartnerAuthApi();
+  const submitBtn = $("partnerSubmitApprovalBtn");
+  if (!partnerCanSubmitForApproval() || !submitBtn || submitBtn.classList.contains("hidden")) {
+    return;
+  }
+
+  if (!auth?.submitMyPubForApproval) {
+    showPartnerOnboardingSuccess("");
+    showPartnerOnboardingError("Submit for approval is not available.");
+    return;
+  }
+
+  showPartnerOnboardingError("");
+  showPartnerOnboardingSuccess("");
+  setPartnerOnboardingBusy(true);
+
+  const result = await auth.submitMyPubForApproval();
+  if (!result?.ok) {
+    setPartnerOnboardingBusy(false);
+    showPartnerOnboardingError(normalizePartnerSubmitError(result?.error));
+    return;
+  }
+
+  await applyPartnerSession(partnerSession || (await auth.getSession()));
+  setPartnerOnboardingBusy(false);
+  renderPartnerOnboardingCard();
+  showPartnerOnboardingSuccess("Submitted for approval. Your pub stays a draft until PintDrop reviews it.");
 }
 
 function getPartnerAccessToken() {
@@ -3063,6 +3280,11 @@ async function handlePartnerMenuSave(event) {
   renderPartnerMenuForm();
 
   if (successEl) successEl.classList.remove("hidden");
+
+  if (isSelfSignupOnboardingPub() || getPartnerAuthApi()?.fetchOnboardingStatus) {
+    await refreshPartnerOnboardingStatus();
+    renderPartnerOnboardingCard();
+  }
 }
 
 async function renderPartner() {
@@ -3084,6 +3306,11 @@ async function renderPartner() {
   }
 
   if (!partnerSession) {
+    if (partnerPendingConfirmEmail) {
+      setPartnerConfirmEmailCopy(partnerPendingConfirmEmail);
+      setPartnerPanelVisibility({ confirmEmail: true });
+      return;
+    }
     setPartnerPanelVisibility({ login: true });
     return;
   }
@@ -3092,7 +3319,19 @@ async function renderPartner() {
     ? "logged_in"
     : (await applyPartnerSession(partnerSession));
 
-  if (sessionState === "needs_registration" || sessionState === "denied") {
+  if (sessionState === "needs_registration") {
+    partnerPendingConfirmEmail = "";
+    setPartnerPanelVisibility({ register: true });
+    return;
+  }
+
+  if (sessionState === "needs_confirmation") {
+    setPartnerConfirmEmailCopy(partnerSession?.user?.email || partnerPendingConfirmEmail);
+    setPartnerPanelVisibility({ confirmEmail: true });
+    return;
+  }
+
+  if (sessionState === "denied") {
     setPartnerPanelVisibility({ denied: true });
     return;
   }
@@ -3102,12 +3341,16 @@ async function renderPartner() {
     return;
   }
 
+  partnerPendingConfirmEmail = "";
   setPartnerPanelVisibility({ dashboard: true });
 
   const pubNameEl = $("partnerDashboardPubName");
   if (pubNameEl && partnerProfile?.pub_name) {
     pubNameEl.textContent = partnerProfile.pub_name;
   }
+
+  await refreshPartnerOnboardingStatus();
+  renderPartnerOnboardingCard();
 
   await loadPartnerMenu();
   await loadPartnerVouchers();
@@ -3347,6 +3590,265 @@ async function resetDemoState() {
   renderSms();
 }
 
+function showPartnerRegisterError(message) {
+  const errorEl = $("partnerRegisterError");
+  if (!errorEl) return;
+  errorEl.textContent = message || "";
+  errorEl.classList.toggle("hidden", !message);
+}
+
+function setPartnerRegisterBusy(busy, statusText) {
+  const form = $("partnerRegisterForm");
+  const submitBtn = $("partnerRegisterBtn");
+  const statusEl = $("partnerRegisterStatus");
+  const fieldIds = [
+    "partnerRegisterPubName",
+    "partnerRegisterLocation",
+    "partnerRegisterContactName",
+    "partnerRegisterContactPhone"
+  ];
+
+  if (busy) showPartnerRegisterError("");
+  form?.setAttribute("aria-busy", busy ? "true" : "false");
+  fieldIds.forEach((id) => {
+    const field = $(id);
+    if (field) field.disabled = busy;
+  });
+  if (submitBtn) {
+    submitBtn.disabled = busy;
+    submitBtn.textContent = busy ? "Creating pub account…" : "Create pub account";
+  }
+  if (statusEl) {
+    statusEl.textContent = busy && statusText ? statusText : "";
+    statusEl.classList.toggle("hidden", !(busy && statusText));
+  }
+}
+
+function resetPartnerRegisterForm() {
+  $("partnerRegisterForm")?.reset();
+  showPartnerRegisterError("");
+  setPartnerRegisterBusy(false);
+}
+
+function readPartnerRegisterFields() {
+  return {
+    pubName: String($("partnerRegisterPubName")?.value || "").trim(),
+    location: String($("partnerRegisterLocation")?.value || "").trim(),
+    contactName: String($("partnerRegisterContactName")?.value || "").trim(),
+    contactPhone: String($("partnerRegisterContactPhone")?.value || "").trim()
+  };
+}
+
+function validatePartnerRegisterFields(fields) {
+  if (fields.pubName.length < 2 || fields.pubName.length > 120) {
+    return "Pub name is required (2–120 characters).";
+  }
+  if (fields.location.length < 2 || fields.location.length > 160) {
+    return "Town / location is required (2–160 characters).";
+  }
+  if (fields.contactName.length < 2 || fields.contactName.length > 120) {
+    return "Contact name is required (2–120 characters).";
+  }
+  if (fields.contactPhone.length < 7 || fields.contactPhone.length > 40) {
+    return "Contact phone is required (7–40 characters).";
+  }
+  return "";
+}
+
+function normalizePartnerRegisterError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+
+  if (!message) return "Could not create your pub account. Please try again.";
+  if (lower.includes("email confirmation required")) {
+    return "Please confirm your email before creating a pub account.";
+  }
+  if (lower.includes("partner authentication required")) {
+    return "Please sign in again to create your pub account.";
+  }
+  return message;
+}
+
+async function handlePartnerRegisterSubmit(event) {
+  event.preventDefault();
+
+  const auth = getPartnerAuthApi();
+  const fields = readPartnerRegisterFields();
+  const validationError = validatePartnerRegisterFields(fields);
+  if (validationError) {
+    showPartnerRegisterError(validationError);
+    return;
+  }
+
+  if (!auth?.registerDraftPub) {
+    showPartnerRegisterError("Pub registration is not available.");
+    return;
+  }
+
+  setPartnerRegisterBusy(true, "Creating your pub account…");
+  const result = await auth.registerDraftPub(
+    fields.pubName,
+    fields.location,
+    fields.contactName,
+    fields.contactPhone
+  );
+
+  if (!result?.ok) {
+    setPartnerRegisterBusy(false);
+    showPartnerRegisterError(normalizePartnerRegisterError(result?.error));
+    return;
+  }
+
+  setPartnerRegisterBusy(true, "Loading your pub dashboard…");
+  const session = partnerSession || (await auth.getSession());
+  const sessionState = await applyPartnerSession(session);
+  setPartnerRegisterBusy(false);
+
+  if (sessionState !== "logged_in") {
+    showPartnerRegisterError(
+      "Your pub account was created, but we could not load the dashboard. Please refresh."
+    );
+    return;
+  }
+
+  resetPartnerRegisterForm();
+  await renderPartner();
+}
+
+function showPartnerSignupError(message) {
+  const errorEl = $("partnerSignupError");
+  if (!errorEl) return;
+  errorEl.textContent = message || "";
+  errorEl.classList.toggle("hidden", !message);
+}
+
+function setPartnerSignupBusy(busy, statusText) {
+  const form = $("partnerSignupForm");
+  const submitBtn = $("partnerSignupBtn");
+  const statusEl = $("partnerSignupStatus");
+  const fieldIds = ["partnerSignupEmail", "partnerSignupPassword", "partnerSignupPasswordConfirm"];
+
+  if (busy) showPartnerSignupError("");
+  form?.setAttribute("aria-busy", busy ? "true" : "false");
+  fieldIds.forEach((id) => {
+    const field = $(id);
+    if (field) field.disabled = busy;
+  });
+  if (submitBtn) {
+    submitBtn.disabled = busy;
+    submitBtn.textContent = busy ? "Creating account…" : "Create account";
+  }
+  if (statusEl) {
+    statusEl.textContent = busy && statusText ? statusText : "";
+    statusEl.classList.toggle("hidden", !(busy && statusText));
+  }
+}
+
+function resetPartnerSignupForm() {
+  $("partnerSignupForm")?.reset();
+  showPartnerSignupError("");
+  setPartnerSignupBusy(false);
+}
+
+function setPartnerConfirmEmailCopy(email) {
+  const messageEl = $("partnerConfirmEmailMessage");
+  if (!messageEl) return;
+  const trimmed = String(email || "").trim();
+  messageEl.textContent = trimmed
+    ? `We sent a confirmation link to ${trimmed}. Confirm your email, then log in to create your pub account.`
+    : "Check your inbox and confirm your email, then log in to create your pub account.";
+}
+
+function showPartnerLoginScreen() {
+  partnerPendingConfirmEmail = "";
+  setPartnerPanelVisibility({ login: true });
+}
+
+function showPartnerSignupScreen() {
+  showPartnerSignupError("");
+  setPartnerSignupBusy(false);
+  setPartnerPanelVisibility({ signup: true });
+}
+
+function validatePartnerSignupFields(email, password, confirmPassword) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    return "Enter a valid email address.";
+  }
+  if (String(password || "").length < 6) {
+    return "Password must be at least 6 characters.";
+  }
+  if (password !== confirmPassword) {
+    return "Passwords do not match.";
+  }
+  return "";
+}
+
+function normalizePartnerSignupError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+  if (!message) return "Could not create your account. Please try again.";
+  if (lower.includes("already registered") || lower.includes("already exists")) {
+    return "An account with this email already exists. Log in instead.";
+  }
+  if (lower.includes("password")) return message;
+  if (lower.includes("email")) return message;
+  return message;
+}
+
+function normalizePartnerLoginError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+  if (lower.includes("email not confirmed")) {
+    return "Confirm your email before logging in. Check your inbox for the confirmation link.";
+  }
+  return message || "Sign in failed.";
+}
+
+async function handlePartnerSignupSubmit(event) {
+  event.preventDefault();
+
+  const auth = getPartnerAuthApi();
+  const email = String($("partnerSignupEmail")?.value || "").trim();
+  const password = String($("partnerSignupPassword")?.value || "");
+  const confirmPassword = String($("partnerSignupPasswordConfirm")?.value || "");
+  const validationError = validatePartnerSignupFields(email, password, confirmPassword);
+  if (validationError) {
+    showPartnerSignupError(validationError);
+    return;
+  }
+
+  if (!auth?.signUp) {
+    showPartnerSignupError("Account signup is not available.");
+    return;
+  }
+
+  setPartnerSignupBusy(true, "Creating your account…");
+  const result = await auth.signUp(email, password);
+
+  if (!result?.ok) {
+    setPartnerSignupBusy(false);
+    showPartnerSignupError(normalizePartnerSignupError(result?.error));
+    return;
+  }
+
+  // Auth user only. Never create a pub from this step.
+  if (result.needsEmailConfirmation || !result.session) {
+    setPartnerSignupBusy(false);
+    partnerPendingConfirmEmail = email;
+    setPartnerConfirmEmailCopy(email);
+    setPartnerPanelVisibility({ confirmEmail: true });
+    return;
+  }
+
+  partnerPendingConfirmEmail = "";
+  setPartnerShiftExpiry();
+  await applyPartnerSession(result.session || (await auth.getSession()));
+  setPartnerSignupBusy(false);
+  resetPartnerSignupForm();
+  await renderPartner();
+}
+
 async function handlePartnerLoginSubmit(event) {
   event.preventDefault();
 
@@ -3382,7 +3884,7 @@ async function handlePartnerLoginSubmit(event) {
   if (!result.ok) {
     clearPartnerShiftExpiry();
     if (errorEl) {
-      errorEl.textContent = result.error || "Sign in failed.";
+      errorEl.textContent = normalizePartnerLoginError(result.error);
       errorEl.classList.remove("hidden");
     }
     if (submitBtn) {
@@ -3408,11 +3910,33 @@ async function handlePartnerLogout() {
   }
   clearPartnerShiftExpiry();
   clearPartnerSessionState();
+  partnerPendingConfirmEmail = "";
+  resetPartnerRegisterForm();
+  resetPartnerSignupForm();
   void renderPartner();
 }
 
 $("partnerLoginForm")?.addEventListener("submit", (event) => {
   void handlePartnerLoginSubmit(event);
+});
+$("partnerCreateAccountBtn")?.addEventListener("click", () => {
+  showPartnerSignupScreen();
+});
+$("partnerSignupForm")?.addEventListener("submit", (event) => {
+  void handlePartnerSignupSubmit(event);
+});
+$("partnerSignupBackToLoginBtn")?.addEventListener("click", () => {
+  showPartnerLoginScreen();
+});
+$("partnerConfirmEmailLoginBtn")?.addEventListener("click", () => {
+  if (partnerSession) {
+    void handlePartnerLogout();
+    return;
+  }
+  showPartnerLoginScreen();
+});
+$("partnerRegisterForm")?.addEventListener("submit", (event) => {
+  void handlePartnerRegisterSubmit(event);
 });
 $("partnerLogoutBtn")?.addEventListener("click", () => {
   void handlePartnerLogout();
@@ -3420,10 +3944,16 @@ $("partnerLogoutBtn")?.addEventListener("click", () => {
 $("partnerDeniedSignOutBtn")?.addEventListener("click", () => {
   void handlePartnerLogout();
 });
+$("partnerRegisterSignOutBtn")?.addEventListener("click", () => {
+  void handlePartnerLogout();
+});
 
 $("resetDemo").addEventListener("click", resetDemoState);
 $("setupPayoutsBtn")?.addEventListener("click", () => {
   void startPartnerPayoutSetup();
+});
+$("partnerSubmitApprovalBtn")?.addEventListener("click", () => {
+  void handlePartnerSubmitForApproval();
 });
 
 $("partnerMenuOfferBarTab")?.addEventListener("change", (event) => {

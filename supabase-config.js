@@ -465,6 +465,50 @@ window.PintDropSupabase.sendVoucherSms = sendVoucherSmsFromEdge;
 window.PintDropSupabase.sendSenderConfirmation = sendSenderConfirmationFromEdge;
 window.PintDropSupabase.sendRecipientGiftEmail = sendRecipientGiftFromEdge;
 
+async function signUpPartner(email, password) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedPassword = String(password || "");
+
+  if (!normalizedEmail || !normalizedPassword) {
+    return { ok: false, error: "Email and password are required." };
+  }
+
+  const redirectTo = (typeof location !== "undefined" && location.origin)
+    ? `${location.origin}${location.pathname || "/"}?view=partner`
+    : undefined;
+
+  const { data, error } = await client.auth.signUp({
+    email: normalizedEmail,
+    password: normalizedPassword,
+    options: redirectTo ? { emailRedirectTo: redirectTo } : undefined
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Auth] sign up failed:", error.message);
+    return { ok: false, error: error.message || "Could not create your account." };
+  }
+
+  const identities = data.user?.identities;
+  if (data.user && Array.isArray(identities) && identities.length === 0 && !data.session) {
+    return {
+      ok: false,
+      error: "An account with this email already exists. Log in instead."
+    };
+  }
+
+  return {
+    ok: true,
+    session: data.session || null,
+    user: data.user || null,
+    needsEmailConfirmation: !data.session
+  };
+}
+
 async function signInPartner(email, password) {
   const client = getSupabaseClient();
   if (!client) {
@@ -534,6 +578,24 @@ function onPartnerAuthStateChange(callback) {
   };
 }
 
+function normalizePartnerRpcJsonObject(data) {
+  if (data == null) return null;
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof data === "object") return data;
+  return null;
+}
+
+function partnerRpcErrorMessage(error, fallback) {
+  return String(error?.message || error || "").trim() || fallback;
+}
+
 async function fetchMyPartnerProfileFromSupabase() {
   const client = getSupabaseClient();
   if (!client) return null;
@@ -544,7 +606,63 @@ async function fetchMyPartnerProfileFromSupabase() {
     return null;
   }
 
-  return data || null;
+  return normalizePartnerRpcJsonObject(data);
+}
+
+async function fetchMyOnboardingStatusFromSupabase() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const { data, error } = await client.rpc("get_my_onboarding_status");
+  if (error) {
+    console.warn("[PintDrop Partner Auth] onboarding status fetch failed:", error.message);
+    return null;
+  }
+
+  return normalizePartnerRpcJsonObject(data);
+}
+
+async function registerMyDraftPubFromSupabase(p_pub_name, p_location, p_contact_name, p_contact_phone) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  // Server assigns pub_id. Never accept or send a client pub_id.
+  const { data, error } = await client.rpc("register_my_draft_pub", {
+    p_pub_name: String(p_pub_name || "").trim(),
+    p_location: String(p_location || "").trim(),
+    p_contact_name: String(p_contact_name || "").trim(),
+    p_contact_phone: String(p_contact_phone || "").trim()
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Auth] register draft pub failed:", error.message);
+    return {
+      ok: false,
+      error: partnerRpcErrorMessage(error, "Could not create your pub account.")
+    };
+  }
+
+  return { ok: true, pub: normalizePartnerRpcJsonObject(data) };
+}
+
+async function submitMyPubForApprovalFromSupabase() {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  const { data, error } = await client.rpc("submit_my_pub_for_approval");
+  if (error) {
+    console.warn("[PintDrop Partner Auth] submit for approval failed:", error.message);
+    return {
+      ok: false,
+      error: partnerRpcErrorMessage(error, "Could not submit your pub for approval.")
+    };
+  }
+
+  return { ok: true, status: normalizePartnerRpcJsonObject(data) };
 }
 
 async function fetchMyPubStripeConnectFromSupabase() {
@@ -622,10 +740,15 @@ async function saveMyPubMenuToSupabase(p_menu) {
 
 window.PintDropSupabase.PartnerAuth = {
   signIn: signInPartner,
+  signUp: signUpPartner,
   signOut: signOutPartner,
   getSession: getPartnerSession,
   onAuthStateChange: onPartnerAuthStateChange,
   fetchProfile: fetchMyPartnerProfileFromSupabase,
+  fetchOnboardingStatus: fetchMyOnboardingStatusFromSupabase,
+  registerDraftPub: registerMyDraftPubFromSupabase,
+  submitMyPubForApproval: submitMyPubForApprovalFromSupabase,
+  submitForApproval: submitMyPubForApprovalFromSupabase,
   fetchStripeConnect: fetchMyPubStripeConnectFromSupabase,
   fetchMenu: fetchMyPubMenuFromSupabase,
   fetchVouchers: fetchMyPubVouchersFromSupabase,

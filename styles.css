@@ -3229,7 +3229,10 @@ body.partner-login-active main {
 }
 
 .partner-login,
-.partner-access-denied {
+.partner-access-denied,
+.partner-register,
+.partner-signup,
+.partner-confirm-email {
   display: flex;
   justify-content: center;
   padding: 24px 0 40px;
@@ -3287,6 +3290,10 @@ body.partner-login-active main {
   font: inherit;
 }
 
+.partner-login-form input:disabled {
+  opacity: 0.7;
+}
+
 .partner-login-error {
   margin: 0;
   color: #ffb4b4;
@@ -3297,6 +3304,23 @@ body.partner-login-active main {
 .partner-login-submit {
   width: 100%;
   margin-top: 4px;
+}
+
+.partner-register .partner-login-card {
+  width: min(100%, 420px);
+}
+
+.partner-register-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.partner-register .secondary.partner-login-submit,
+.partner-login .secondary.partner-login-submit,
+.partner-signup .secondary.partner-login-submit {
+  margin-top: 12px;
 }
 
 .partner-logout-btn {
@@ -3367,6 +3391,34 @@ body.partner-login-active main {
 .partner-pilot-scan {
   margin-bottom: 20px;
   padding: 20px 16px;
+}
+
+.partner-onboarding-card {
+  margin-bottom: 20px;
+  padding: 18px 16px;
+}
+
+.partner-onboarding-status {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.partner-onboarding-lead {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.partner-onboarding-card .partner-menu-message {
+  margin: 0 0 12px;
+}
+
+.partner-onboarding-submit {
+  width: 100%;
+  min-height: 52px;
 }
 
 .partner-payouts-card {

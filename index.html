@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260817-pilot-cleanup" />
+  <link rel="stylesheet" href="styles.css?v=20260826-partner-auth-signup" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -384,6 +384,44 @@
             <p id="partnerLoginError" class="partner-login-error hidden" role="alert"></p>
             <button id="partnerLoginBtn" type="submit" class="primary partner-login-submit">Log in</button>
           </form>
+          <button id="partnerCreateAccountBtn" type="button" class="secondary partner-login-submit">Create account</button>
+        </div>
+      </div>
+
+      <div id="partnerSignup" class="partner-signup hidden">
+        <div class="partner-login-card card">
+          <img class="pintdrop-mark pintdrop-mark--partner-login" src="images/pintdrop-mark.png" alt="PintDrop" />
+          <h1 class="partner-login-title">Create account</h1>
+          <p class="partner-login-lead">Create your partner login. You’ll add your pub after your email is confirmed.</p>
+          <form id="partnerSignupForm" class="partner-login-form" novalidate>
+            <label class="field">
+              <span>Email</span>
+              <input id="partnerSignupEmail" type="email" name="email" autocomplete="username" required />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input id="partnerSignupPassword" type="password" name="password" autocomplete="new-password" minlength="6" required />
+            </label>
+            <label class="field">
+              <span>Confirm password</span>
+              <input id="partnerSignupPasswordConfirm" type="password" name="password_confirm" autocomplete="new-password" minlength="6" required />
+            </label>
+            <p id="partnerSignupError" class="partner-login-error hidden" role="alert"></p>
+            <p id="partnerSignupStatus" class="partner-register-status hidden" role="status"></p>
+            <button id="partnerSignupBtn" type="submit" class="primary partner-login-submit">Create account</button>
+          </form>
+          <button id="partnerSignupBackToLoginBtn" type="button" class="secondary partner-login-submit">Already have an account? Log in</button>
+        </div>
+      </div>
+
+      <div id="partnerConfirmEmail" class="partner-confirm-email hidden">
+        <div class="partner-login-card card">
+          <img class="pintdrop-mark pintdrop-mark--partner-login" src="images/pintdrop-mark.png" alt="PintDrop" />
+          <h1 class="partner-login-title">Confirm your email</h1>
+          <p id="partnerConfirmEmailMessage" class="partner-login-lead">
+            Check your inbox and confirm your email, then log in to create your pub account.
+          </p>
+          <button id="partnerConfirmEmailLoginBtn" type="button" class="primary partner-login-submit">Log in</button>
         </div>
       </div>
 
@@ -398,6 +436,65 @@
         </div>
       </div>
 
+      <div id="partnerRegister" class="partner-register hidden">
+        <div class="partner-login-card card">
+          <img class="pintdrop-mark pintdrop-mark--partner-login" src="images/pintdrop-mark.png" alt="PintDrop" />
+          <h1 class="partner-login-title">Create your pub account</h1>
+          <p class="partner-login-lead">Tell us about your pub. It stays as a draft until PintDrop reviews it.</p>
+          <form id="partnerRegisterForm" class="partner-login-form" novalidate>
+            <label class="field">
+              <span>Pub name</span>
+              <input
+                id="partnerRegisterPubName"
+                type="text"
+                name="pub_name"
+                autocomplete="organization"
+                maxlength="120"
+                required
+              />
+            </label>
+            <label class="field">
+              <span>Town / location</span>
+              <input
+                id="partnerRegisterLocation"
+                type="text"
+                name="location"
+                autocomplete="address-level2"
+                maxlength="160"
+                required
+              />
+            </label>
+            <label class="field">
+              <span>Contact name</span>
+              <input
+                id="partnerRegisterContactName"
+                type="text"
+                name="contact_name"
+                autocomplete="name"
+                maxlength="120"
+                required
+              />
+            </label>
+            <label class="field">
+              <span>Contact phone</span>
+              <input
+                id="partnerRegisterContactPhone"
+                type="tel"
+                name="contact_phone"
+                autocomplete="tel"
+                inputmode="tel"
+                maxlength="40"
+                required
+              />
+            </label>
+            <p id="partnerRegisterError" class="partner-login-error hidden" role="alert"></p>
+            <p id="partnerRegisterStatus" class="partner-register-status hidden" role="status"></p>
+            <button id="partnerRegisterBtn" type="submit" class="primary partner-login-submit">Create pub account</button>
+          </form>
+          <button id="partnerRegisterSignOutBtn" type="button" class="secondary partner-login-submit">Sign out</button>
+        </div>
+      </div>
+
       <div id="partnerDashboard" class="partner-dashboard hidden">
       <header class="partner-pilot-header">
         <img class="pintdrop-mark pintdrop-mark--partner-pilot" src="images/pintdrop-mark.png" alt="PintDrop" />
@@ -408,6 +505,17 @@
         <button id="partnerLogoutBtn" class="partner-logout-btn" type="button">Log out</button>
         <button id="resetDemo" class="partner-reset-btn" type="button" aria-label="Reset session" title="Reset session">↺</button>
       </header>
+
+      <section id="partnerOnboardingCard" class="card partner-onboarding-card hidden">
+        <div class="partner-section-head">
+          <h2>Onboarding</h2>
+        </div>
+        <p id="partnerOnboardingStatus" class="partner-onboarding-status">Status: Draft</p>
+        <p id="partnerOnboardingLead" class="partner-onboarding-lead"></p>
+        <p id="partnerOnboardingError" class="partner-menu-message partner-menu-message--error hidden" role="alert"></p>
+        <p id="partnerOnboardingSuccess" class="partner-menu-message partner-menu-message--success hidden" role="status"></p>
+        <button id="partnerSubmitApprovalBtn" type="button" class="primary partner-onboarding-submit hidden">Submit for approval</button>
+      </section>
 
       <section class="card partner-payouts-card">
         <div class="partner-section-head">
@@ -592,7 +700,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260818-menu-fallback"></script>
-  <script src="app.js?v=20260820-server-history"></script>
+  <script src="supabase-config.js?v=20260826-partner-auth-signup"></script>
+  <script src="app.js?v=20260826-partner-auth-signup"></script>
 </body>
 </html>
