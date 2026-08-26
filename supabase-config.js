@@ -43,6 +43,23 @@ window.PintDropSupabase = {
   getClient: getSupabaseClient
 };
 
+const BAR_TAB_PRESET_PRICES = [20, 30, 40, 50];
+window.PintDropSupabase.BAR_TAB_PRESET_PRICES = BAR_TAB_PRESET_PRICES;
+
+function snapBarTabPresetPrice(price) {
+  const value = Number(price);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return BAR_TAB_PRESET_PRICES.reduce((best, preset) => (
+    Math.abs(preset - value) < Math.abs(best - value) ? preset : best
+  ));
+}
+
+function isBarTabDrinkRow(row) {
+  const slug = String(row?.slug || row?.id || "").trim().toLowerCase();
+  if (slug === "tab") return true;
+  return String(row?.name || "").toLowerCase().includes("bar tab");
+}
+
 const PUB_LOCAL_ASSETS = {
   oflahertys: { icon: "🍺", image: "images/oflahertys-bar.jpg" },
   drift: { icon: "🍻" },
@@ -82,6 +99,7 @@ function mapSupabasePubRow(row) {
     icon: row.icon || assets.icon || "🍺",
     image: row.image_url || row.image || assets.image || null,
     participating: customerReady,
+    offersBarTab: row.offers_bar_tab,
     source: "supabase"
   };
 }
@@ -111,12 +129,26 @@ window.PintDropSupabase.fetchPubs = fetchPubsFromSupabase;
 window.PintDropSupabase.mapPubRow = mapSupabasePubRow;
 
 function mapSupabaseDrinkRow(row) {
+  const slug = String(row.slug || "").trim();
+  const isTab = isBarTabDrinkRow(row);
+  let price = Number(row.price);
+  let name = row.name;
+
+  if (isTab) {
+    const snapped = snapBarTabPresetPrice(price);
+    if (snapped) {
+      price = snapped;
+      name = `€${snapped} Bar Tab`;
+    }
+  }
+
   return {
-    id: row.slug,
+    id: slug || (isTab ? "tab" : String(row.id)),
     supabaseId: row.id,
-    name: row.name,
-    price: Number(row.price),
-    icon: row.icon || "🍺",
+    name,
+    price,
+    icon: row.icon || (isTab ? "💶" : "🍺"),
+    active: row.active !== false && row.active !== 0,
     source: "supabase"
   };
 }
@@ -136,7 +168,13 @@ async function fetchDrinksFromSupabase(pubId) {
     return null;
   }
 
-  return (data || []).map(mapSupabaseDrinkRow);
+  return (data || [])
+    .filter((row) => {
+      if (!isBarTabDrinkRow(row)) return true;
+      const active = row.active !== false && row.active !== 0;
+      return active && snapBarTabPresetPrice(row.price) != null;
+    })
+    .map(mapSupabaseDrinkRow);
 }
 
 window.PintDropSupabase.fetchDrinks = fetchDrinksFromSupabase;

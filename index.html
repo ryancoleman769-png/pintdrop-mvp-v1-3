@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260826-partner-auth-signup" />
+  <link rel="stylesheet" href="styles.css?v=20260826-bar-tab-presets" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -538,22 +538,25 @@
               <span>Offer Bar Tab</span>
             </label>
             <div id="partnerMenuBarTabFields" class="partner-menu-bar-tab-fields hidden">
-              <label class="partner-menu-price-field">
-                <span class="partner-menu-currency">€</span>
-                <input
-                  type="number"
-                  id="partnerMenuBarTabPrice"
-                  min="0.01"
-                  max="500"
-                  step="0.01"
-                  inputmode="decimal"
-                  placeholder="0.00"
-                />
-              </label>
-              <label class="partner-menu-toggle partner-menu-toggle-inline">
-                <input type="checkbox" id="partnerMenuBarTabActive" />
-                <span>Available</span>
-              </label>
+              <p class="partner-menu-bar-tab-hint">Choose a fixed amount customers can send.</p>
+              <div class="partner-bar-tab-amounts" role="radiogroup" aria-label="Bar Tab amount">
+                <label class="partner-bar-tab-amount">
+                  <input type="radio" name="partnerBarTabAmount" value="20" />
+                  <span>€20</span>
+                </label>
+                <label class="partner-bar-tab-amount">
+                  <input type="radio" name="partnerBarTabAmount" value="30" />
+                  <span>€30</span>
+                </label>
+                <label class="partner-bar-tab-amount">
+                  <input type="radio" name="partnerBarTabAmount" value="40" />
+                  <span>€40</span>
+                </label>
+                <label class="partner-bar-tab-amount">
+                  <input type="radio" name="partnerBarTabAmount" value="50" />
+                  <span>€50</span>
+                </label>
+              </div>
             </div>
           </div>
           <p id="partnerMenuError" class="partner-menu-message partner-menu-message--error hidden" role="alert"></p>
@@ -700,7 +703,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260826-partner-auth-signup"></script>
-  <script src="app.js?v=20260826-partner-auth-signup"></script>
+  <script src="supabase-config.js?v=20260826-bar-tab-presets"></script>
+  <script src="app.js?v=20260826-bar-tab-presets"></script>
 </body>
 </html>

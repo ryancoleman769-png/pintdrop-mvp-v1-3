@@ -3557,9 +3557,64 @@ body.partner-login-active main {
 
 .partner-menu-bar-tab-fields {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) auto;
   gap: 10px;
+}
+
+.partner-menu-bar-tab-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.partner-bar-tab-amounts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.partner-bar-tab-amount {
+  position: relative;
+  display: block;
+  margin: 0;
+  cursor: pointer;
+}
+
+.partner-bar-tab-amount input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.partner-bar-tab-amount span {
+  display: flex;
   align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.partner-bar-tab-amount:hover span {
+  border-color: rgba(106, 203, 69, 0.35);
+}
+
+.partner-bar-tab-amount input:focus-visible + span {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.partner-bar-tab-amount input:checked + span {
+  color: #07120d;
+  background: var(--green);
+  border-color: var(--green);
 }
 
 .partner-menu-message {
@@ -3589,9 +3644,12 @@ body.partner-login-active main {
 }
 
 @media (max-width: 520px) {
-  .partner-menu-row,
-  .partner-menu-bar-tab-fields {
+  .partner-menu-row {
     grid-template-columns: 1fr;
+  }
+
+  .partner-bar-tab-amounts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .partner-menu-toggle-inline {

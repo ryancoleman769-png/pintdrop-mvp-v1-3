@@ -57,10 +57,46 @@ const DEMO_GIFTS = [
   { id: "tab", name: "€20 Bar Tab", price: 20.00, icon: "💶" }
 ];
 
-let gifts = DEMO_GIFTS.map(gift => ({ ...gift }));
+const BAR_TAB_PRESETS = window.PintDropSupabase?.BAR_TAB_PRESET_PRICES || [20, 30, 40, 50];
+
+function isBarTabGift(gift) {
+  if (!gift) return false;
+  if (gift.id === "tab" || gift.is_bar_tab) return true;
+  return String(gift.name || "").toLowerCase().includes("bar tab");
+}
+
+function snapBarTabPreset(price) {
+  const value = Number(price);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return BAR_TAB_PRESETS.reduce((best, preset) => (
+    Math.abs(preset - value) < Math.abs(best - value) ? preset : best
+  ));
+}
+
+function formatBarTabGiftName(price) {
+  return `€${price} Bar Tab`;
+}
+
+function normalizeCustomerGifts(list) {
+  return (list || []).flatMap((gift) => {
+    if (!isBarTabGift(gift)) return [gift];
+    if (gift.active === false || gift.active === 0) return [];
+    const price = snapBarTabPreset(gift.price);
+    if (!price || !BAR_TAB_PRESETS.includes(price)) return [];
+    return [{
+      ...gift,
+      id: "tab",
+      price,
+      name: formatBarTabGiftName(price),
+      icon: gift.icon || "💶"
+    }];
+  });
+}
+
+let gifts = normalizeCustomerGifts(DEMO_GIFTS.map(gift => ({ ...gift })));
 
 async function loadGiftsForPub(pub) {
-  gifts = DEMO_GIFTS.map(gift => ({ ...gift, source: "demo" }));
+  gifts = normalizeCustomerGifts(DEMO_GIFTS.map(gift => ({ ...gift, source: "demo" })));
 
   if (!pub?.supabaseId || !window.PintDropSupabase?.isConfigured?.()) {
     ensureSelectedGiftValid();
@@ -70,7 +106,10 @@ async function loadGiftsForPub(pub) {
   try {
     const remoteGifts = await window.PintDropSupabase.fetchDrinks(pub.supabaseId);
     if (remoteGifts?.length) {
-      gifts = remoteGifts;
+      gifts = normalizeCustomerGifts(remoteGifts);
+      if (pub.offersBarTab === false) {
+        gifts = gifts.filter((gift) => !isBarTabGift(gift));
+      }
     }
   } catch (error) {
     console.warn("[PintDrop] Using demo drinks after Supabase error:", error);
@@ -928,6 +967,7 @@ function renderChoices() {
   document.querySelectorAll("[data-gift]").forEach(btn => {
     btn.onclick = () => {
       selectedGift = gifts.find(gift => gift.id === btn.dataset.gift);
+      if (!selectedGift) return;
       renderChoices();
       renderSummary();
       $("giftStepError")?.classList.add("hidden");
@@ -1598,9 +1638,18 @@ function buildPendingOrder() {
 
   if (!recipient || !phone || !sender || !senderEmail) return null;
 
+  const gift = isBarTabGift(selectedGift)
+    ? {
+        ...selectedGift,
+        id: "tab",
+        price: snapBarTabPreset(selectedGift.price) || selectedGift.price,
+        name: formatBarTabGiftName(snapBarTabPreset(selectedGift.price) || selectedGift.price)
+      }
+    : selectedGift;
+
   return {
     pub: selectedPub,
-    gift: selectedGift,
+    gift,
     recipient,
     phone,
     recipientEmail: recipientEmail || null,
@@ -1608,8 +1657,8 @@ function buildPendingOrder() {
     senderEmail,
     message: $("message").value.trim(),
     deliveryDate,
-    fee: calculateServiceFee(selectedGift.price),
-    total: calculateOrderTotal(selectedGift.price)
+    fee: calculateServiceFee(gift.price),
+    total: calculateOrderTotal(gift.price)
   };
 }
 
@@ -3062,6 +3111,25 @@ function normalizePartnerMenuError(error) {
   return message;
 }
 
+function getSelectedPartnerBarTabPreset() {
+  const checked = document.querySelector('input[name="partnerBarTabAmount"]:checked');
+  const value = Number(checked?.value);
+  return BAR_TAB_PRESETS.includes(value) ? value : null;
+}
+
+function setSelectedPartnerBarTabPreset(price) {
+  const snapped = snapBarTabPreset(price) || BAR_TAB_PRESETS[0];
+  document.querySelectorAll('input[name="partnerBarTabAmount"]').forEach((input) => {
+    input.checked = Number(input.value) === snapped;
+  });
+  return snapped;
+}
+
+function existingPartnerBarTabItem() {
+  const items = Array.isArray(partnerMenuData?.items) ? partnerMenuData.items : [];
+  return items.find(item => item.is_bar_tab || item.slug === "tab") || null;
+}
+
 function formatPartnerMenuPrice(value) {
   if (value === null || value === undefined || value === "") return "";
   const price = Number(value);
@@ -3119,13 +3187,10 @@ function renderPartnerMenuForm() {
   if (barTabBlock) {
     const offerCheckbox = $("partnerMenuOfferBarTab");
     const fields = $("partnerMenuBarTabFields");
-    const priceInput = $("partnerMenuBarTabPrice");
-    const activeInput = $("partnerMenuBarTabActive");
 
     if (offerCheckbox) offerCheckbox.checked = offersBarTab;
     if (fields) fields.classList.toggle("hidden", !offersBarTab);
-    if (priceInput) priceInput.value = formatPartnerMenuPrice(tabItem?.price);
-    if (activeInput) activeInput.checked = Boolean(tabItem?.active);
+    setSelectedPartnerBarTabPreset(tabItem?.price || BAR_TAB_PRESETS[0]);
   }
 }
 
@@ -3147,13 +3212,15 @@ function collectPartnerMenuPayload() {
 
   const offersBarTab = Boolean($("partnerMenuOfferBarTab")?.checked);
   if (offersBarTab) {
-    const rawTabPrice = String($("partnerMenuBarTabPrice")?.value || "").trim();
-    const tabItem = {
+    const existingTab = existingPartnerBarTabItem();
+    const tabPrice = getSelectedPartnerBarTabPreset()
+      || snapBarTabPreset(existingTab?.price)
+      || BAR_TAB_PRESETS[0];
+    items.push({
       slug: "tab",
-      active: Boolean($("partnerMenuBarTabActive")?.checked)
-    };
-    if (rawTabPrice) tabItem.price = Number(rawTabPrice);
-    items.push(tabItem);
+      active: true,
+      price: tabPrice
+    });
   }
 
   return { offers_bar_tab: offersBarTab, items };
@@ -3176,8 +3243,8 @@ function validatePartnerMenuPayload(payload) {
 
   if (payload.offers_bar_tab) {
     const tab = items.find(item => item.slug === "tab");
-    if (tab?.active && (!Number.isFinite(tab.price) || tab.price <= 0 || tab.price > 500)) {
-      return "Enter a valid Bar Tab price (€0.01–€500).";
+    if (!tab || !BAR_TAB_PRESETS.includes(Number(tab.price))) {
+      return "Choose a Bar Tab amount (€20, €30, €40 or €50).";
     }
   }
 
@@ -3957,7 +4024,11 @@ $("partnerSubmitApprovalBtn")?.addEventListener("click", () => {
 });
 
 $("partnerMenuOfferBarTab")?.addEventListener("change", (event) => {
-  $("partnerMenuBarTabFields")?.classList.toggle("hidden", !event.target.checked);
+  const enabled = Boolean(event.target.checked);
+  $("partnerMenuBarTabFields")?.classList.toggle("hidden", !enabled);
+  if (enabled && !getSelectedPartnerBarTabPreset()) {
+    setSelectedPartnerBarTabPreset(existingPartnerBarTabItem()?.price || BAR_TAB_PRESETS[0]);
+  }
 });
 
 $("partnerMenuForm")?.addEventListener("submit", (event) => {
