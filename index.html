@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260826-partner-submit" />
+  <link rel="stylesheet" href="styles.css?v=20260826-partner-auth-signup" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -384,6 +384,44 @@
             <p id="partnerLoginError" class="partner-login-error hidden" role="alert"></p>
             <button id="partnerLoginBtn" type="submit" class="primary partner-login-submit">Log in</button>
           </form>
+          <button id="partnerCreateAccountBtn" type="button" class="secondary partner-login-submit">Create account</button>
+        </div>
+      </div>
+
+      <div id="partnerSignup" class="partner-signup hidden">
+        <div class="partner-login-card card">
+          <img class="pintdrop-mark pintdrop-mark--partner-login" src="images/pintdrop-mark.png" alt="PintDrop" />
+          <h1 class="partner-login-title">Create account</h1>
+          <p class="partner-login-lead">Create your partner login. You’ll add your pub after your email is confirmed.</p>
+          <form id="partnerSignupForm" class="partner-login-form" novalidate>
+            <label class="field">
+              <span>Email</span>
+              <input id="partnerSignupEmail" type="email" name="email" autocomplete="username" required />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input id="partnerSignupPassword" type="password" name="password" autocomplete="new-password" minlength="6" required />
+            </label>
+            <label class="field">
+              <span>Confirm password</span>
+              <input id="partnerSignupPasswordConfirm" type="password" name="password_confirm" autocomplete="new-password" minlength="6" required />
+            </label>
+            <p id="partnerSignupError" class="partner-login-error hidden" role="alert"></p>
+            <p id="partnerSignupStatus" class="partner-register-status hidden" role="status"></p>
+            <button id="partnerSignupBtn" type="submit" class="primary partner-login-submit">Create account</button>
+          </form>
+          <button id="partnerSignupBackToLoginBtn" type="button" class="secondary partner-login-submit">Already have an account? Log in</button>
+        </div>
+      </div>
+
+      <div id="partnerConfirmEmail" class="partner-confirm-email hidden">
+        <div class="partner-login-card card">
+          <img class="pintdrop-mark pintdrop-mark--partner-login" src="images/pintdrop-mark.png" alt="PintDrop" />
+          <h1 class="partner-login-title">Confirm your email</h1>
+          <p id="partnerConfirmEmailMessage" class="partner-login-lead">
+            Check your inbox and confirm your email, then log in to create your pub account.
+          </p>
+          <button id="partnerConfirmEmailLoginBtn" type="button" class="primary partner-login-submit">Log in</button>
         </div>
       </div>
 
@@ -662,7 +700,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260826-partner-submit"></script>
-  <script src="app.js?v=20260826-partner-submit"></script>
+  <script src="supabase-config.js?v=20260826-partner-auth-signup"></script>
+  <script src="app.js?v=20260826-partner-auth-signup"></script>
 </body>
 </html>

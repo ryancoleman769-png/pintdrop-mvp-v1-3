@@ -465,6 +465,50 @@ window.PintDropSupabase.sendVoucherSms = sendVoucherSmsFromEdge;
 window.PintDropSupabase.sendSenderConfirmation = sendSenderConfirmationFromEdge;
 window.PintDropSupabase.sendRecipientGiftEmail = sendRecipientGiftFromEdge;
 
+async function signUpPartner(email, password) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedPassword = String(password || "");
+
+  if (!normalizedEmail || !normalizedPassword) {
+    return { ok: false, error: "Email and password are required." };
+  }
+
+  const redirectTo = (typeof location !== "undefined" && location.origin)
+    ? `${location.origin}${location.pathname || "/"}?view=partner`
+    : undefined;
+
+  const { data, error } = await client.auth.signUp({
+    email: normalizedEmail,
+    password: normalizedPassword,
+    options: redirectTo ? { emailRedirectTo: redirectTo } : undefined
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Auth] sign up failed:", error.message);
+    return { ok: false, error: error.message || "Could not create your account." };
+  }
+
+  const identities = data.user?.identities;
+  if (data.user && Array.isArray(identities) && identities.length === 0 && !data.session) {
+    return {
+      ok: false,
+      error: "An account with this email already exists. Log in instead."
+    };
+  }
+
+  return {
+    ok: true,
+    session: data.session || null,
+    user: data.user || null,
+    needsEmailConfirmation: !data.session
+  };
+}
+
 async function signInPartner(email, password) {
   const client = getSupabaseClient();
   if (!client) {
@@ -696,6 +740,7 @@ async function saveMyPubMenuToSupabase(p_menu) {
 
 window.PintDropSupabase.PartnerAuth = {
   signIn: signInPartner,
+  signUp: signUpPartner,
   signOut: signOutPartner,
   getSession: getPartnerSession,
   onAuthStateChange: onPartnerAuthStateChange,

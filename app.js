@@ -158,6 +158,7 @@ let partnerMenuLoading = false;
 let partnerSession = null;
 let partnerProfile = null;
 let partnerOnboardingStatus = null;
+let partnerPendingConfirmEmail = "";
 let partnerAuthReady = false;
 let partnerAuthUnsubscribe = null;
 
@@ -2522,17 +2523,21 @@ function setPartnerPanelVisibility({
   login = false,
   denied = false,
   register = false,
+  signup = false,
+  confirmEmail = false,
   dashboard = false
 } = {}) {
   $("partnerAuthLoading")?.classList.toggle("hidden", !loading);
   $("partnerLogin")?.classList.toggle("hidden", !login);
   $("partnerAccessDenied")?.classList.toggle("hidden", !denied);
   $("partnerRegister")?.classList.toggle("hidden", !register);
+  $("partnerSignup")?.classList.toggle("hidden", !signup);
+  $("partnerConfirmEmail")?.classList.toggle("hidden", !confirmEmail);
   $("partnerDashboard")?.classList.toggle("hidden", !dashboard);
   const onPartnerView = $("partner")?.classList.contains("active");
   document.body.classList.toggle(
     "partner-login-active",
-    onPartnerView && (loading || login || denied || register)
+    onPartnerView && (loading || login || denied || register || signup || confirmEmail)
   );
 }
 
@@ -2578,8 +2583,8 @@ async function applyPartnerSession(session) {
   }
 
   partnerProfile = null;
-  if (partnerOnboardingStatus?.email_confirmed === false) {
-    return "denied";
+  if (!isPartnerEmailConfirmed()) {
+    return "needs_confirmation";
   }
 
   return "needs_registration";
@@ -2633,6 +2638,14 @@ function hasActivePartnerProfile() {
     && Number.isFinite(Number(partnerProfile.pub_id))
     && Number(partnerProfile.pub_id) > 0
   );
+}
+
+function isPartnerEmailConfirmed() {
+  if (typeof partnerOnboardingStatus?.email_confirmed === "boolean") {
+    return partnerOnboardingStatus.email_confirmed;
+  }
+  const user = partnerSession?.user;
+  return Boolean(user?.email_confirmed_at || user?.confirmed_at);
 }
 
 async function refreshPartnerOnboardingStatus() {
@@ -3293,6 +3306,11 @@ async function renderPartner() {
   }
 
   if (!partnerSession) {
+    if (partnerPendingConfirmEmail) {
+      setPartnerConfirmEmailCopy(partnerPendingConfirmEmail);
+      setPartnerPanelVisibility({ confirmEmail: true });
+      return;
+    }
     setPartnerPanelVisibility({ login: true });
     return;
   }
@@ -3302,7 +3320,14 @@ async function renderPartner() {
     : (await applyPartnerSession(partnerSession));
 
   if (sessionState === "needs_registration") {
+    partnerPendingConfirmEmail = "";
     setPartnerPanelVisibility({ register: true });
+    return;
+  }
+
+  if (sessionState === "needs_confirmation") {
+    setPartnerConfirmEmailCopy(partnerSession?.user?.email || partnerPendingConfirmEmail);
+    setPartnerPanelVisibility({ confirmEmail: true });
     return;
   }
 
@@ -3316,6 +3341,7 @@ async function renderPartner() {
     return;
   }
 
+  partnerPendingConfirmEmail = "";
   setPartnerPanelVisibility({ dashboard: true });
 
   const pubNameEl = $("partnerDashboardPubName");
@@ -3689,6 +3715,140 @@ async function handlePartnerRegisterSubmit(event) {
   await renderPartner();
 }
 
+function showPartnerSignupError(message) {
+  const errorEl = $("partnerSignupError");
+  if (!errorEl) return;
+  errorEl.textContent = message || "";
+  errorEl.classList.toggle("hidden", !message);
+}
+
+function setPartnerSignupBusy(busy, statusText) {
+  const form = $("partnerSignupForm");
+  const submitBtn = $("partnerSignupBtn");
+  const statusEl = $("partnerSignupStatus");
+  const fieldIds = ["partnerSignupEmail", "partnerSignupPassword", "partnerSignupPasswordConfirm"];
+
+  if (busy) showPartnerSignupError("");
+  form?.setAttribute("aria-busy", busy ? "true" : "false");
+  fieldIds.forEach((id) => {
+    const field = $(id);
+    if (field) field.disabled = busy;
+  });
+  if (submitBtn) {
+    submitBtn.disabled = busy;
+    submitBtn.textContent = busy ? "Creating account…" : "Create account";
+  }
+  if (statusEl) {
+    statusEl.textContent = busy && statusText ? statusText : "";
+    statusEl.classList.toggle("hidden", !(busy && statusText));
+  }
+}
+
+function resetPartnerSignupForm() {
+  $("partnerSignupForm")?.reset();
+  showPartnerSignupError("");
+  setPartnerSignupBusy(false);
+}
+
+function setPartnerConfirmEmailCopy(email) {
+  const messageEl = $("partnerConfirmEmailMessage");
+  if (!messageEl) return;
+  const trimmed = String(email || "").trim();
+  messageEl.textContent = trimmed
+    ? `We sent a confirmation link to ${trimmed}. Confirm your email, then log in to create your pub account.`
+    : "Check your inbox and confirm your email, then log in to create your pub account.";
+}
+
+function showPartnerLoginScreen() {
+  partnerPendingConfirmEmail = "";
+  setPartnerPanelVisibility({ login: true });
+}
+
+function showPartnerSignupScreen() {
+  showPartnerSignupError("");
+  setPartnerSignupBusy(false);
+  setPartnerPanelVisibility({ signup: true });
+}
+
+function validatePartnerSignupFields(email, password, confirmPassword) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    return "Enter a valid email address.";
+  }
+  if (String(password || "").length < 6) {
+    return "Password must be at least 6 characters.";
+  }
+  if (password !== confirmPassword) {
+    return "Passwords do not match.";
+  }
+  return "";
+}
+
+function normalizePartnerSignupError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+  if (!message) return "Could not create your account. Please try again.";
+  if (lower.includes("already registered") || lower.includes("already exists")) {
+    return "An account with this email already exists. Log in instead.";
+  }
+  if (lower.includes("password")) return message;
+  if (lower.includes("email")) return message;
+  return message;
+}
+
+function normalizePartnerLoginError(error) {
+  const message = String(error?.message || error || "").trim();
+  const lower = message.toLowerCase();
+  if (lower.includes("email not confirmed")) {
+    return "Confirm your email before logging in. Check your inbox for the confirmation link.";
+  }
+  return message || "Sign in failed.";
+}
+
+async function handlePartnerSignupSubmit(event) {
+  event.preventDefault();
+
+  const auth = getPartnerAuthApi();
+  const email = String($("partnerSignupEmail")?.value || "").trim();
+  const password = String($("partnerSignupPassword")?.value || "");
+  const confirmPassword = String($("partnerSignupPasswordConfirm")?.value || "");
+  const validationError = validatePartnerSignupFields(email, password, confirmPassword);
+  if (validationError) {
+    showPartnerSignupError(validationError);
+    return;
+  }
+
+  if (!auth?.signUp) {
+    showPartnerSignupError("Account signup is not available.");
+    return;
+  }
+
+  setPartnerSignupBusy(true, "Creating your account…");
+  const result = await auth.signUp(email, password);
+
+  if (!result?.ok) {
+    setPartnerSignupBusy(false);
+    showPartnerSignupError(normalizePartnerSignupError(result?.error));
+    return;
+  }
+
+  // Auth user only. Never create a pub from this step.
+  if (result.needsEmailConfirmation || !result.session) {
+    setPartnerSignupBusy(false);
+    partnerPendingConfirmEmail = email;
+    setPartnerConfirmEmailCopy(email);
+    setPartnerPanelVisibility({ confirmEmail: true });
+    return;
+  }
+
+  partnerPendingConfirmEmail = "";
+  setPartnerShiftExpiry();
+  await applyPartnerSession(result.session || (await auth.getSession()));
+  setPartnerSignupBusy(false);
+  resetPartnerSignupForm();
+  await renderPartner();
+}
+
 async function handlePartnerLoginSubmit(event) {
   event.preventDefault();
 
@@ -3724,7 +3884,7 @@ async function handlePartnerLoginSubmit(event) {
   if (!result.ok) {
     clearPartnerShiftExpiry();
     if (errorEl) {
-      errorEl.textContent = result.error || "Sign in failed.";
+      errorEl.textContent = normalizePartnerLoginError(result.error);
       errorEl.classList.remove("hidden");
     }
     if (submitBtn) {
@@ -3750,12 +3910,30 @@ async function handlePartnerLogout() {
   }
   clearPartnerShiftExpiry();
   clearPartnerSessionState();
+  partnerPendingConfirmEmail = "";
   resetPartnerRegisterForm();
+  resetPartnerSignupForm();
   void renderPartner();
 }
 
 $("partnerLoginForm")?.addEventListener("submit", (event) => {
   void handlePartnerLoginSubmit(event);
+});
+$("partnerCreateAccountBtn")?.addEventListener("click", () => {
+  showPartnerSignupScreen();
+});
+$("partnerSignupForm")?.addEventListener("submit", (event) => {
+  void handlePartnerSignupSubmit(event);
+});
+$("partnerSignupBackToLoginBtn")?.addEventListener("click", () => {
+  showPartnerLoginScreen();
+});
+$("partnerConfirmEmailLoginBtn")?.addEventListener("click", () => {
+  if (partnerSession) {
+    void handlePartnerLogout();
+    return;
+  }
+  showPartnerLoginScreen();
 });
 $("partnerRegisterForm")?.addEventListener("submit", (event) => {
   void handlePartnerRegisterSubmit(event);
