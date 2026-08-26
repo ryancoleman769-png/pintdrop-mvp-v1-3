@@ -7,12 +7,11 @@
 --   • Drops Stage 1 RPCs / helpers introduced by partner-self-signup-stage1-migration.sql
 --   • Restores get_my_partner_profile() to the pre-Stage-1 return shape
 --   • Removes registration_user_id column + unique index
---   • Does NOT delete pubs, drinks, or pub_partner_users rows created while Stage 1 was live
+--   • Does NOT delete pubs or pub_partner_users rows created while Stage 1 was live
 --     (those remain as draft/inactive data — safe for customer listings)
---   • Does NOT re-apply NOT NULL on drinks.price (left nullable so any draft NULL prices remain valid)
+--   • Does NOT touch public.drinks schema or prices (Stage 1 no longer alters drinks)
 --   • Does NOT drop is_pub_customer_ready (may pre-exist from onboarding migration)
---   • Does NOT touch get_my_pub_menu / save_my_pub_menu
---   • Does NOT modify existing live pub drink prices
+--   • Does NOT touch get_my_pub_menu / save_my_pub_menu / _partner_menu_catalog
 
 BEGIN;
 
@@ -23,6 +22,7 @@ DROP FUNCTION IF EXISTS public.submit_my_pub_for_approval();
 
 -- Helpers introduced by Stage 1
 DROP FUNCTION IF EXISTS public.generate_unique_pub_slug(text);
+-- Legacy helper from earlier Stage 1 drafts (safe if absent)
 DROP FUNCTION IF EXISTS public.seed_standard_pub_drinks(bigint);
 
 -- Admin RPCs (service_role)

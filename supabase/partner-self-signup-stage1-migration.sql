@@ -9,9 +9,10 @@
 --   • public.pub_partner_users + current_partner_pub_id() / current_partner_role()
 --   • public.pub_stripe_payouts_ready(...)
 --   • public.drinks (per-pub rows: slug, name, icon, price, active, sort_order)
---   • Live menu RPCs get_my_pub_menu / save_my_pub_menu (NOT redefined here —
---     source SQL is not in the main repo; Stage 1 only seeds inactive drink rows
---     with NULL prices for: pint, wine, cocktail, spirit, tab)
+--   • Live menu RPCs get_my_pub_menu / save_my_pub_menu / _partner_menu_catalog
+--     (NOT redefined here). New pubs need NO seeded drinks.rows — the live menu
+--     RPC LEFT JOINs catalog→drinks and returns price=NULL, active=false, saved=false
+--     until the partner saves via save_my_pub_menu.
 --
 -- PRODUCTION SAFETY:
 --   • Additive columns + new/replaced RPCs only
@@ -99,60 +100,11 @@ REVOKE ALL ON FUNCTION public.generate_unique_pub_slug(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.generate_unique_pub_slug(text) TO service_role;
 
 -- =============================================================================
--- 3. Seed standard drink/menu rows for a new pub (structure only — no prices)
---    Template slugs/names/icons/sort_order match the live catalog shape
---    (pint, wine, cocktail, spirit, tab). Prices are NOT copied from any pub.
---    Rows start active=false with price=NULL so partners must enter prices.
---    Bar Tab stays off via pubs.offers_bar_tab=false on register + tab inactive.
--- =============================================================================
-
--- Allow unconfigured prices on draft menus. Safe for existing rows (values kept).
--- If price is already nullable this is a no-op structurally.
-ALTER TABLE public.drinks
-  ALTER COLUMN price DROP NOT NULL;
-
-CREATE OR REPLACE FUNCTION public.seed_standard_pub_drinks(p_pub_id bigint)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF p_pub_id IS NULL THEN
-    RAISE EXCEPTION 'pub_id is required';
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM public.pubs WHERE id = p_pub_id) THEN
-    RAISE EXCEPTION 'Pub not found: %', p_pub_id;
-  END IF;
-
-  -- Idempotent per (pub_id, slug): skip rows that already exist.
-  -- price NULL + active false = unconfigured until partner saves real prices.
-  INSERT INTO public.drinks (pub_id, slug, name, icon, price, active, sort_order)
-  SELECT p_pub_id, t.slug, t.name, t.icon, NULL::numeric, false, t.sort_order
-  FROM (
-    VALUES
-      ('pint',     'Pint',           '🍺', 1),
-      ('wine',     'Glass of Wine',  '🍷', 2),
-      ('cocktail', 'Cocktail',       '🍸', 3),
-      ('spirit',   'Spirit & Mixer', '🥃', 4),
-      ('tab',      'Bar Tab',        '💶', 5)
-  ) AS t(slug, name, icon, sort_order)
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM public.drinks d
-    WHERE d.pub_id = p_pub_id
-      AND d.slug = t.slug
-  );
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.seed_standard_pub_drinks(bigint) FROM PUBLIC;
--- Internal + service_role; partners reach this only via register_my_draft_pub.
-GRANT EXECUTE ON FUNCTION public.seed_standard_pub_drinks(bigint) TO service_role;
-
--- =============================================================================
--- 4. register_my_draft_pub — authenticated, one pub per user, no client pub_id
+-- 3. register_my_draft_pub — authenticated, one pub per user, no client pub_id
+--    Creates draft pub + owner mapping only. Does NOT seed drinks rows and does
+--    NOT alter drinks.price nullability (Production: price NOT NULL). Blank menu
+--    UI comes from live get_my_pub_menu() catalog LEFT JOIN until save_my_pub_menu.
+--    Bar Tab stays off via offers_bar_tab=false.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.register_my_draft_pub(
@@ -272,8 +224,6 @@ BEGIN
     v_uid
   );
 
-  PERFORM public.seed_standard_pub_drinks(v_pub_id);
-
   v_role := 'owner';
 
   SELECT json_build_object(
@@ -303,7 +253,7 @@ REVOKE ALL ON FUNCTION public.register_my_draft_pub(text, text, text, text) FROM
 GRANT EXECUTE ON FUNCTION public.register_my_draft_pub(text, text, text, text) TO authenticated;
 
 -- =============================================================================
--- 5. Extend get_my_partner_profile (additive fields; same isolation model)
+-- 4. Extend get_my_partner_profile (additive fields; same isolation model)
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.get_my_partner_profile()
@@ -361,7 +311,7 @@ REVOKE ALL ON FUNCTION public.get_my_partner_profile() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_my_partner_profile() TO authenticated;
 
 -- =============================================================================
--- 6. get_my_onboarding_status — checklist for Stage 2 UI
+-- 5. get_my_onboarding_status — checklist for Stage 2 UI
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.get_my_onboarding_status()
@@ -419,6 +369,9 @@ BEGIN
     AND nullif(trim(coalesce(v_pub.contact_name, '')), '') IS NOT NULL
     AND nullif(trim(coalesce(v_pub.contact_phone, '')), '') IS NOT NULL;
 
+  -- Menu is "ready" only after save_my_pub_menu creates real drinks rows:
+  -- at least one active standard (non-tab) drink with a valid price.
+  -- Unsaved catalog items from get_my_pub_menu (no drinks row) do not count.
   SELECT count(*)::integer
   INTO v_active_standard_count
   FROM public.drinks d
@@ -473,7 +426,7 @@ REVOKE ALL ON FUNCTION public.get_my_onboarding_status() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_my_onboarding_status() TO authenticated;
 
 -- =============================================================================
--- 7. submit_my_pub_for_approval — partner cannot set active/approved
+-- 6. submit_my_pub_for_approval — partner cannot set active/approved
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.submit_my_pub_for_approval()
@@ -532,7 +485,7 @@ REVOKE ALL ON FUNCTION public.submit_my_pub_for_approval() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_my_pub_for_approval() TO authenticated;
 
 -- =============================================================================
--- 8. Admin approve / reject — service_role ONLY
+-- 7. Admin approve / reject — service_role ONLY
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.admin_approve_pub(
@@ -642,7 +595,6 @@ COMMIT;
 -- WHERE pronamespace = 'public'::regnamespace
 --   AND proname IN (
 --     'generate_unique_pub_slug',
---     'seed_standard_pub_drinks',
 --     'register_my_draft_pub',
 --     'get_my_partner_profile',
 --     'get_my_onboarding_status',
