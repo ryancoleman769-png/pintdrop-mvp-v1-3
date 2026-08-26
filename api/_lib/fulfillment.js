@@ -173,7 +173,6 @@ async function createOrGetCheckoutVoucher(sessionId, order) {
     return voucher;
   }
 
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const code = generateVoucherCode();
   const row = await supabaseRpc("fulfill_checkout_voucher", {
     p_stripe_checkout_session_id: sessionId,
@@ -194,7 +193,7 @@ async function createOrGetCheckoutVoucher(sessionId, order) {
     p_sender_email: order.senderEmail,
     p_message: order.message || `A PintDrop from ${order.senderName}`,
     p_delivery_date: order.deliveryDate,
-    p_expires_at: expiresAt
+    p_expires_at: null
   });
 
   return mapVoucherRow(row);

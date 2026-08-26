@@ -235,7 +235,7 @@ async function createVoucherInSupabase(voucher) {
     p_sender_name: voucher.sender,
     p_message: voucher.message,
     p_delivery_date: voucher.deliveryDate,
-    p_expires_at: voucher.expiresAt
+    p_expires_at: voucher.expiresAt || null
   });
 
   if (error) {

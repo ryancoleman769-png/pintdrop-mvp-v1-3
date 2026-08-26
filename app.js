@@ -293,7 +293,7 @@ function buildDemoVoucher({
     fee: calculateServiceFee(gift.price),
     total: calculateOrderTotal(gift.price),
     createdAt,
-    expiresAt: new Date(new Date(createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    expiresAt: null,
     status: resolvedStatus,
     redeemedAt
   };
@@ -548,7 +548,7 @@ function normalizePartnerRedemptionError(error) {
   if (lower.includes("partner authentication required")) {
     return "Please sign in to redeem vouchers.";
   }
-  if (lower.includes("expired")) return "This voucher has expired and cannot be redeemed.";
+  if (lower.includes("expired")) return "This voucher is not redeemable.";
   if (lower.includes("bar tab")) {
     return "Bar Tab vouchers must be redeemed with an amount from the partner dashboard.";
   }
@@ -1073,7 +1073,7 @@ async function openRecipientVoucherView(code, { updateHash = true } = {}) {
     setRecipientVoucherMode(true);
     $("voucherEmpty").classList.remove("hidden");
     $("voucherTitle").textContent = "Voucher not found";
-    $("voucherSubtitle").textContent = "This link may be invalid or expired.";
+    $("voucherSubtitle").textContent = "This link may be invalid.";
     $("voucherBody").classList.add("hidden");
     return;
   }
@@ -1967,7 +1967,7 @@ async function createVoucherFromPendingOrder() {
     fee: pendingOrder.fee,
     total: pendingOrder.total,
     createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    expiresAt: null,
     status: "waiting",
     redeemedAt: null
   };
@@ -2222,7 +2222,12 @@ function populateVoucherFields(voucher, prefix = "") {
   id("Code").textContent = voucher.code;
   id("Recipient").textContent = voucher.recipient;
   id("Sender").textContent = voucher.sender;
-  id("Expiry").textContent = formatDate((voucher.expiresAt || new Date(Date.now() + 30 * 86400000).toISOString()).slice(0, 10));
+  const expiryEl = id("Expiry");
+  if (expiryEl) {
+    expiryEl.textContent = voucher.expiresAt
+      ? formatDate(voucher.expiresAt.slice(0, 10))
+      : "";
+  }
   const statusEl = id("Status");
   if (prefix === "voucher") {
     statusEl.textContent = voucher.status === "redeemed" ? "REDEEMED" : "VALID";
@@ -3151,7 +3156,6 @@ function voucherRow(voucher, waiting = false) {
         <strong>${voucher.recipient} · ${voucher.gift.name}</strong>
         <small>From ${voucher.sender} · ${voucher.pub.name}, ${voucher.pub.town}</small>
         <small class="voucher-row-code">${voucher.code}</small>
-        <small class="voucher-row-expiry">Expires ${formatDate(voucher.expiresAt.slice(0, 10))}</small>
       </div>
       <div class="voucher-row-meta">
         <div class="amount">${money(voucher.gift.price)}</div>
@@ -3171,7 +3175,6 @@ function renderRedeemValid(voucher) {
         <div><dt>Gift</dt><dd>${voucher.gift.icon} ${voucher.gift.name}</dd></div>
         <div><dt>Pub</dt><dd>${voucher.pub.name}, ${voucher.pub.town}</dd></div>
         <div><dt>Voucher ID</dt><dd>${voucher.code}</dd></div>
-        <div><dt>Expiry date</dt><dd>${formatDate(voucher.expiresAt.slice(0, 10))}</dd></div>
       </dl>
       <button type="button" class="primary redeem-pint-btn" id="confirmRedeem">Redeem ${voucher.gift.name}</button>
     </div>
