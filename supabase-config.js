@@ -46,17 +46,18 @@ window.PintDropSupabase = {
 const BAR_TAB_PRESET_PRICES = [20, 30, 40, 50];
 window.PintDropSupabase.BAR_TAB_PRESET_PRICES = BAR_TAB_PRESET_PRICES;
 
-function snapBarTabPresetPrice(price) {
-  const value = Number(price);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return BAR_TAB_PRESET_PRICES.reduce((best, preset) => (
-    Math.abs(preset - value) < Math.abs(best - value) ? preset : best
-  ));
+function barTabPresetFromSlug(slug) {
+  const match = /^tab-(20|30|40|50)$/.exec(String(slug || "").trim().toLowerCase());
+  return match ? Number(match[1]) : null;
+}
+
+function isExactBarTabPresetPrice(price) {
+  return BAR_TAB_PRESET_PRICES.includes(Number(price));
 }
 
 function isBarTabDrinkRow(row) {
   const slug = String(row?.slug || row?.id || "").trim().toLowerCase();
-  if (slug === "tab") return true;
+  if (slug === "tab" || barTabPresetFromSlug(slug) != null) return true;
   return String(row?.name || "").toLowerCase().includes("bar tab");
 }
 
@@ -131,15 +132,14 @@ window.PintDropSupabase.mapPubRow = mapSupabasePubRow;
 function mapSupabaseDrinkRow(row) {
   const slug = String(row.slug || "").trim();
   const isTab = isBarTabDrinkRow(row);
-  let price = Number(row.price);
+  const price = Number(row.price);
+  const presetFromSlug = barTabPresetFromSlug(slug);
   let name = row.name;
 
-  if (isTab) {
-    const snapped = snapBarTabPresetPrice(price);
-    if (snapped) {
-      price = snapped;
-      name = `€${snapped} Bar Tab`;
-    }
+  if (presetFromSlug && price === presetFromSlug) {
+    name = `€${presetFromSlug} Bar Tab`;
+  } else if (isTab && slug === "tab" && isExactBarTabPresetPrice(price)) {
+    name = `€${price} Bar Tab`;
   }
 
   return {
@@ -151,6 +151,25 @@ function mapSupabaseDrinkRow(row) {
     active: row.active !== false && row.active !== 0,
     source: "supabase"
   };
+}
+
+function isCustomerVisibleBarTabRow(row, rows) {
+  const active = row.active !== false && row.active !== 0;
+  if (!active) return false;
+
+  const slug = String(row.slug || "").trim().toLowerCase();
+  const price = Number(row.price);
+  const presetFromSlug = barTabPresetFromSlug(slug);
+
+  if (presetFromSlug) return price === presetFromSlug;
+  if (!isExactBarTabPresetPrice(price)) return false;
+
+  return !(rows || []).some((other) => (
+    other !== row
+    && barTabPresetFromSlug(other.slug) === price
+    && other.active !== false
+    && other.active !== 0
+  ));
 }
 
 async function fetchDrinksFromSupabase(pubId) {
@@ -168,12 +187,9 @@ async function fetchDrinksFromSupabase(pubId) {
     return null;
   }
 
-  return (data || [])
-    .filter((row) => {
-      if (!isBarTabDrinkRow(row)) return true;
-      const active = row.active !== false && row.active !== 0;
-      return active && snapBarTabPresetPrice(row.price) != null;
-    })
+  const rows = data || [];
+  return rows
+    .filter((row) => !isBarTabDrinkRow(row) || isCustomerVisibleBarTabRow(row, rows))
     .map(mapSupabaseDrinkRow);
 }
 

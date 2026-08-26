@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260826-bar-tab-presets" />
+  <link rel="stylesheet" href="styles.css?v=20260826-bar-tab-multi" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -538,22 +538,23 @@
               <span>Offer Bar Tab</span>
             </label>
             <div id="partnerMenuBarTabFields" class="partner-menu-bar-tab-fields hidden">
-              <p class="partner-menu-bar-tab-hint">Choose a fixed amount customers can send.</p>
-              <div class="partner-bar-tab-amounts" role="radiogroup" aria-label="Bar Tab amount">
+              <p class="partner-menu-bar-tab-hint">Select one or more amounts customers can send.</p>
+              <p id="partnerMenuBarTabLegacy" class="partner-menu-bar-tab-legacy hidden" role="status"></p>
+              <div class="partner-bar-tab-amounts" role="group" aria-label="Bar Tab amounts">
                 <label class="partner-bar-tab-amount">
-                  <input type="radio" name="partnerBarTabAmount" value="20" />
+                  <input type="checkbox" name="partnerBarTabAmount" value="20" />
                   <span>€20</span>
                 </label>
                 <label class="partner-bar-tab-amount">
-                  <input type="radio" name="partnerBarTabAmount" value="30" />
+                  <input type="checkbox" name="partnerBarTabAmount" value="30" />
                   <span>€30</span>
                 </label>
                 <label class="partner-bar-tab-amount">
-                  <input type="radio" name="partnerBarTabAmount" value="40" />
+                  <input type="checkbox" name="partnerBarTabAmount" value="40" />
                   <span>€40</span>
                 </label>
                 <label class="partner-bar-tab-amount">
-                  <input type="radio" name="partnerBarTabAmount" value="50" />
+                  <input type="checkbox" name="partnerBarTabAmount" value="50" />
                   <span>€50</span>
                 </label>
               </div>
@@ -703,7 +704,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260826-bar-tab-presets"></script>
-  <script src="app.js?v=20260826-bar-tab-presets"></script>
+  <script src="supabase-config.js?v=20260826-bar-tab-multi"></script>
+  <script src="app.js?v=20260826-bar-tab-multi"></script>
 </body>
 </html>
