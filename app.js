@@ -1157,7 +1157,6 @@ function renderChoices() {
       <div class="venue-card-content">
         <div class="venue-card-top">
           <strong>${pub.name}</strong>
-          <span class="venue-rating">★ ${meta.rating}</span>
         </div>
         <small class="venue-location">${pub.town}</small>
         <span class="venue-tag">${disabled ? "Not yet available" : "Partner pub"}</span>
