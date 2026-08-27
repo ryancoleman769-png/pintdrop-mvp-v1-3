@@ -1816,7 +1816,6 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
     barTabPanel.classList.toggle("hidden", !barTab);
     if (!barTab) {
       barTabPanel.classList.remove("is-used");
-      $("redemptionBarTabUsedBanner")?.classList.add("hidden");
     }
     if (barTab && barTabState) {
       fillBarTabBalanceFields(voucher, {
@@ -1836,8 +1835,6 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
         barTabRedeemBtn.disabled = true;
       }
       barTabPanel.classList.toggle("is-used", barTabState.tone === "used");
-      const usedBanner = $("redemptionBarTabUsedBanner");
-      usedBanner?.classList.toggle("hidden", barTabState.tone !== "used");
       const showConfirmed = barTabState.showConfirmed;
       if (confirmedBlock) {
         confirmedBlock.classList.toggle("hidden", !showConfirmed);

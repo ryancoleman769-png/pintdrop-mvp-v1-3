@@ -2383,15 +2383,6 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   letter-spacing: 0.18em;
   line-height: 1.1;
 }
-.redemption-bar-tab-used-banner {
-  margin-bottom: 18px;
-}
-.redemption-bar-tab-used-x {
-  display: block;
-  font-size: 3.2rem;
-  line-height: 1;
-  margin-bottom: 4px;
-}
 .redemption-bar-tab-panel.is-used {
   border: 2px solid #ff5252;
   background: rgba(198, 40, 40, 0.12);

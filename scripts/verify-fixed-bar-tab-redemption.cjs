@@ -313,9 +313,9 @@ assert.ok(indexHtml.includes('id="redemptionBarTabRedeemBtn" type="button" class
 assert.ok(appJs.includes("Voucher scanned — NOT YET REDEEMED"));
 assert.ok(appJs.includes("REDEMPTION CONFIRMED"));
 assert.ok(appJs.includes("❌ BAR TAB USED — DO NOT ACCEPT"));
-assert.ok(indexHtml.includes('id="redemptionBarTabUsedBanner"'));
-assert.ok(indexHtml.includes("BAR TAB USED — DO NOT ACCEPT"));
-assert.ok(indexHtml.includes("app.js?v=20260827-bar-tab-used"));
+assert.ok(!indexHtml.includes('id="redemptionBarTabUsedBanner"'));
+assert.ok(!indexHtml.includes("redemption-bar-tab-used-banner"));
+assert.ok(indexHtml.includes("app.js?v=20260827-bar-tab-used-once"));
 assert.ok(appJs.includes("showSenderNotification(result.voucher, result.redemption)"));
 
 assert.ok(appJs.includes("const show = isBarTabVoucher(voucher);"));
