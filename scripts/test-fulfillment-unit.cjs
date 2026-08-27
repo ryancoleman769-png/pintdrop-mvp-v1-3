@@ -111,6 +111,10 @@ const fulfillmentSource = fs.readFileSync(
   "utf8"
 );
 assert.ok(
+  fulfillmentSource.includes("buildSmsDeliveryPayload(voucher)"),
+  "SMS invoke must use the Preview-safe payload builder"
+);
+assert.ok(
   fulfillmentSource.includes("p_expires_at: null"),
   "Stripe fulfillment must persist p_expires_at: null"
 );

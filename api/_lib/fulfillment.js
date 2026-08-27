@@ -228,15 +228,33 @@ function shouldSendChannel(voucher, channel) {
   return false;
 }
 
-async function deliverSms(voucher) {
-  return invokeSupabaseFunction("send-voucher-sms", {
+function resolveServerSmsProvider(env = process.env) {
+  const value = String(env.SMS_PROVIDER || "").trim().toLowerCase();
+  if (value === "twilio" || value === "sendmode") return value;
+  return null;
+}
+
+function buildSmsDeliveryPayload(voucher, env = process.env) {
+  const payload = {
     recipient_phone: voucher.recipientPhone,
     voucher_code: voucher.code,
     sender_name: voucher.senderName,
     recipient_name: voucher.recipientName,
     pub_name: voucher.pubName,
     drink_name: voucher.drinkName
-  });
+  };
+
+  const smsProvider = resolveServerSmsProvider(env);
+  if (smsProvider) payload.sms_provider = smsProvider;
+
+  const appUrl = String(env.PINTDROP_APP_URL || "").trim();
+  if (appUrl) payload.app_url = appUrl;
+
+  return payload;
+}
+
+async function deliverSms(voucher) {
+  return invokeSupabaseFunction("send-voucher-sms", buildSmsDeliveryPayload(voucher));
 }
 
 async function deliverSenderEmail(voucher) {
@@ -418,5 +436,8 @@ module.exports = {
   mapVoucherRow,
   getVoucherByStripeSession,
   fulfillCheckoutSession,
-  buildFulfillmentResponse
+  buildFulfillmentResponse,
+  shouldSendChannel,
+  resolveServerSmsProvider,
+  buildSmsDeliveryPayload
 };

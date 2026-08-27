@@ -15,6 +15,7 @@ type SendVoucherSmsRequest = {
   pub_name?: string;
   drink_name?: string;
   app_url?: string;
+  sms_provider?: string;
 };
 
 type SmsSendResult = {
@@ -154,6 +155,35 @@ function resolveSmsProvider() {
   return (Deno.env.get("SMS_PROVIDER") || "twilio").trim().toLowerCase();
 }
 
+function parseRequestedSmsProvider(raw: unknown) {
+  if (raw == null) {
+    return { ok: true as const, provider: null };
+  }
+
+  const value = String(raw).trim().toLowerCase();
+  if (!value) {
+    return { ok: true as const, provider: null };
+  }
+
+  if (value === "twilio" || value === "sendmode") {
+    return { ok: true as const, provider: value };
+  }
+
+  return {
+    ok: false as const,
+    error: "sms_provider must be twilio or sendmode."
+  };
+}
+
+function resolveEffectiveSmsProvider(payload: SendVoucherSmsRequest) {
+  const requested = parseRequestedSmsProvider(payload?.sms_provider);
+  if (!requested.ok) return requested;
+  if (requested.provider) {
+    return { ok: true as const, provider: requested.provider };
+  }
+  return { ok: true as const, provider: resolveSmsProvider() };
+}
+
 function shouldFallbackToTwilio() {
   return Deno.env.get("SMS_FALLBACK_TO_TWILIO") === "true";
 }
@@ -232,6 +262,57 @@ async function sendViaTwilio({
   };
 }
 
+function buildSendmodeV2MessagePayload(recipientPhone, body, senderId, voucherCode) {
+  return {
+    messagetext: body,
+    recipients: [recipientPhone],
+    senderid: senderId,
+    customerid: voucherCode
+  };
+}
+
+function buildSendmodeV2Request(apiKey, senderId, recipientPhone, body, voucherCode) {
+  return {
+    url: "https://rest.sendmode.com/v2/send",
+    headers: {
+      Authorization: apiKey,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      message: JSON.stringify(
+        buildSendmodeV2MessagePayload(recipientPhone, body, senderId, voucherCode)
+      )
+    })
+  };
+}
+
+function isSendmodeV2Success(httpOk, data) {
+  return Boolean(httpOk) && data?.status === "OK" && data?.statusCode === 0;
+}
+
+function getSendmodeV2ErrorDetails(data) {
+  if (!data || typeof data !== "object") return data;
+  const details = {};
+  if (data.status != null) details.status = data.status;
+  if (data.statusCode != null) details.statusCode = data.statusCode;
+  if (typeof data.error === "string" && data.error) details.error = data.error;
+  return Object.keys(details).length ? details : data;
+}
+
+function getSendmodeV2MessageSid(data) {
+  const candidates = [
+    data?.eventId,
+    data?.EventID,
+    data?.event_id,
+    data?.messageId,
+    data?.message_id
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 async function sendViaSendmode({
   recipientPhone,
   body,
@@ -252,22 +333,18 @@ async function sendViaSendmode({
     };
   }
 
-  const sendmodeResponse = await fetch(
-    "https://sms-rest.sendmode.dev/3.0/send",
-    {
-      method: "POST",
-      headers: {
-        Authorization: apiKey,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        sender_id: senderId,
-        message: body,
-        mobile_number: recipientPhone,
-        customer_id: voucherCode
-      })
-    }
+  const request = buildSendmodeV2Request(
+    apiKey,
+    senderId,
+    recipientPhone,
+    body,
+    voucherCode
   );
+  const sendmodeResponse = await fetch(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: request.body
+  });
 
   const sendmodeParsed = await readResponseJson(sendmodeResponse);
 
@@ -282,32 +359,20 @@ async function sendViaSendmode({
   }
 
   const sendmodeData = sendmodeParsed.data;
-  const isSuccessful = sendmodeData.is_successful === true;
-  const errorMessage = typeof sendmodeData.error_message === "string"
-    ? sendmodeData.error_message
-    : undefined;
 
-  if (!sendmodeResponse.ok || !isSuccessful) {
+  if (!isSendmodeV2Success(sendmodeResponse.ok, sendmodeData)) {
     return {
       ok: false,
       provider: "sendmode",
       error: "Sendmode SMS failed.",
-      details: errorMessage || sendmodeData
+      details: getSendmodeV2ErrorDetails(sendmodeData)
     };
   }
-
-  const requestId = typeof sendmodeData.request_id === "string"
-    ? sendmodeData.request_id
-    : undefined;
-  const acceptDate = typeof sendmodeData.accept_date === "string"
-    ? sendmodeData.accept_date
-    : undefined;
-  const messageSid = requestId || acceptDate;
 
   return {
     ok: true,
     provider: "sendmode",
-    message_sid: messageSid,
+    message_sid: getSendmodeV2MessageSid(sendmodeData),
     to: recipientPhone,
     voucher_code: voucherCode
   };
@@ -350,7 +415,17 @@ serve(async (req) => {
     const pubName = (payload.pub_name || "").trim();
     const drinkName = (payload.drink_name || "").trim();
     const appUrl = resolveAppUrl(payload);
-    const smsProvider = resolveSmsProvider();
+    const providerResult = resolveEffectiveSmsProvider(payload);
+    if (!providerResult.ok) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: providerResult.error
+        },
+        400
+      );
+    }
+    const smsProvider = providerResult.provider;
 
     if (!recipientPhone) {
       return jsonResponse(
