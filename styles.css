@@ -2383,6 +2383,20 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   letter-spacing: 0.18em;
   line-height: 1.1;
 }
+.redemption-bar-tab-panel.is-used {
+  border: 2px solid #ff5252;
+  background: rgba(198, 40, 40, 0.12);
+}
+.redemption-bar-tab-panel.is-used .redemption-bar-tab-row strong {
+  color: #ffd6d6;
+}
+#redemptionBarTabRemaining {
+  font-variant-numeric: tabular-nums;
+}
+.redemption-bar-tab-panel.is-used #redemptionBarTabRemaining {
+  color: #ff8a80;
+  font-size: 1.2rem;
+}
 .redemption-status-wrap {
   text-align: center;
   margin-bottom: 22px;
@@ -2486,6 +2500,110 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
   background: linear-gradient(180deg, #5fbf2a 0%, #3d8f14 100%);
   border: 2px solid rgba(255, 255, 255, 0.22);
   box-shadow: 0 8px 28px rgba(106, 203, 69, 0.35);
+}
+.redemption-bar-tab-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+.redemption-bar-tab-panel.hidden {
+  display: none;
+}
+.redemption-bar-tab-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.95rem;
+}
+.redemption-bar-tab-row span {
+  color: var(--muted);
+}
+.redemption-bar-tab-row strong {
+  font-size: 1.05rem;
+}
+.bar-tab-balance-panel {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+}
+.bar-tab-balance-panel.hidden {
+  display: none;
+}
+.bar-tab-balance-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.95rem;
+}
+.bar-tab-balance-row span {
+  color: var(--muted);
+}
+.bar-tab-balance-row--remaining strong {
+  font-size: 1.1rem;
+}
+.redemption-bar-tab-amount-field {
+  display: grid;
+  gap: 8px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: inherit;
+}
+.redemption-bar-tab-amount-field input {
+  min-height: 64px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 2px solid var(--green);
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+#redemptionBarTabRedeemBtn {
+  min-height: 56px;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+#redemptionBarTabRedeemBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.redemption-bar-tab-hold-warning {
+  margin: 0;
+  color: #ffd18a;
+  font-weight: 800;
+  font-size: 0.95rem;
+  text-align: center;
+}
+.redemption-bar-tab-hold-warning.hidden,
+.redemption-bar-tab-confirmed.hidden {
+  display: none;
+}
+.redemption-bar-tab-confirmed {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(106, 203, 69, 0.14);
+  border: 1px solid rgba(106, 203, 69, 0.35);
+}
+.redemption-bar-tab-error {
+  margin: 0;
+  color: #ffb4b4;
+  font-weight: 700;
+}
+.redemption-bar-tab-success {
+  margin: 0;
+  color: #b7f08a;
+  font-weight: 700;
 }
 .redemption-actions {
   display: grid;
@@ -3557,9 +3675,72 @@ body.partner-login-active main {
 
 .partner-menu-bar-tab-fields {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) auto;
   gap: 10px;
+}
+
+.partner-menu-bar-tab-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.partner-menu-bar-tab-legacy {
+  margin: 0;
+  color: #ffd27a;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.partner-bar-tab-amounts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.partner-bar-tab-amount {
+  position: relative;
+  display: block;
+  margin: 0;
+  cursor: pointer;
+}
+
+.partner-bar-tab-amount input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.partner-bar-tab-amount span {
+  display: flex;
   align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.partner-bar-tab-amount:hover span {
+  border-color: rgba(106, 203, 69, 0.35);
+}
+
+.partner-bar-tab-amount input:focus-visible + span {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.partner-bar-tab-amount input:checked + span {
+  color: #07120d;
+  background: var(--green);
+  border-color: var(--green);
 }
 
 .partner-menu-message {
@@ -3589,9 +3770,12 @@ body.partner-login-active main {
 }
 
 @media (max-width: 520px) {
-  .partner-menu-row,
-  .partner-menu-bar-tab-fields {
+  .partner-menu-row {
     grid-template-columns: 1fr;
+  }
+
+  .partner-bar-tab-amounts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .partner-menu-toggle-inline {
@@ -3773,8 +3957,34 @@ body.partner-login-active main {
   box-shadow: 0 8px 28px rgba(198, 40, 40, 0.35);
 }
 
+.redemption-status-hero.bar-tab-used {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  font-size: 0.95rem;
+  border-radius: 16px;
+  color: #ffffff;
+  background: #8b0000;
+  box-shadow: 0 8px 28px rgba(198, 40, 40, 0.45);
+}
+
 .redemption-status-hero.waiting {
   min-width: 140px;
+}
+
+.redemption-status-hero.not-yet-redeemed {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  font-size: 0.95rem;
+  border-radius: 16px;
+  color: #fff8ee;
+  background: #c45c12;
+  box-shadow: 0 8px 28px rgba(196, 92, 18, 0.35);
 }
 
 .pintdrop-mark--redemption {

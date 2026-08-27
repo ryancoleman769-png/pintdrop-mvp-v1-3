@@ -43,6 +43,24 @@ window.PintDropSupabase = {
   getClient: getSupabaseClient
 };
 
+const BAR_TAB_PRESET_PRICES = [20, 30];
+window.PintDropSupabase.BAR_TAB_PRESET_PRICES = BAR_TAB_PRESET_PRICES;
+
+function barTabPresetFromSlug(slug) {
+  const match = /^tab-(20|30)$/.exec(String(slug || "").trim().toLowerCase());
+  return match ? Number(match[1]) : null;
+}
+
+function isExactBarTabPresetPrice(price) {
+  return BAR_TAB_PRESET_PRICES.includes(Number(price));
+}
+
+function isBarTabDrinkRow(row) {
+  const slug = String(row?.slug || row?.id || "").trim().toLowerCase();
+  if (slug === "tab" || slug.startsWith("tab-")) return true;
+  return String(row?.name || "").toLowerCase().includes("bar tab");
+}
+
 const PUB_LOCAL_ASSETS = {
   oflahertys: { icon: "🍺", image: "images/oflahertys-bar.jpg" },
   drift: { icon: "🍻" },
@@ -82,6 +100,7 @@ function mapSupabasePubRow(row) {
     icon: row.icon || assets.icon || "🍺",
     image: row.image_url || row.image || assets.image || null,
     participating: customerReady,
+    offersBarTab: row.offers_bar_tab,
     source: "supabase"
   };
 }
@@ -111,14 +130,46 @@ window.PintDropSupabase.fetchPubs = fetchPubsFromSupabase;
 window.PintDropSupabase.mapPubRow = mapSupabasePubRow;
 
 function mapSupabaseDrinkRow(row) {
+  const slug = String(row.slug || "").trim();
+  const isTab = isBarTabDrinkRow(row);
+  const price = Number(row.price);
+  const presetFromSlug = barTabPresetFromSlug(slug);
+  let name = row.name;
+
+  if (presetFromSlug && price === presetFromSlug) {
+    name = `€${presetFromSlug} Bar Tab`;
+  } else if (isTab && slug === "tab" && isExactBarTabPresetPrice(price)) {
+    name = `€${price} Bar Tab`;
+  }
+
   return {
-    id: row.slug,
+    id: slug || (isTab ? "tab" : String(row.id)),
     supabaseId: row.id,
-    name: row.name,
-    price: Number(row.price),
-    icon: row.icon || "🍺",
+    name,
+    price,
+    icon: row.icon || (isTab ? "💶" : "🍺"),
+    active: row.active !== false && row.active !== 0,
     source: "supabase"
   };
+}
+
+function isCustomerVisibleBarTabRow(row, rows) {
+  const active = row.active !== false && row.active !== 0;
+  if (!active) return false;
+
+  const slug = String(row.slug || "").trim().toLowerCase();
+  const price = Number(row.price);
+  const presetFromSlug = barTabPresetFromSlug(slug);
+
+  if (presetFromSlug) return price === presetFromSlug;
+  if (!isExactBarTabPresetPrice(price)) return false;
+
+  return !(rows || []).some((other) => (
+    other !== row
+    && barTabPresetFromSlug(other.slug) === price
+    && other.active !== false
+    && other.active !== 0
+  ));
 }
 
 async function fetchDrinksFromSupabase(pubId) {
@@ -136,7 +187,10 @@ async function fetchDrinksFromSupabase(pubId) {
     return null;
   }
 
-  return (data || []).map(mapSupabaseDrinkRow);
+  const rows = data || [];
+  return rows
+    .filter((row) => !isBarTabDrinkRow(row) || isCustomerVisibleBarTabRow(row, rows))
+    .map(mapSupabaseDrinkRow);
 }
 
 window.PintDropSupabase.fetchDrinks = fetchDrinksFromSupabase;
@@ -156,6 +210,10 @@ function mapSupabaseVoucherRow(row) {
 
   const pubSlug = PUB_SLUG_BY_SUPABASE_ID[row.pub_id] || `pub-${row.pub_id}`;
   const assets = PUB_LOCAL_ASSETS[pubSlug] || {};
+
+  const originalBalance = row.bar_tab_original_balance;
+  const remainingBalance = row.bar_tab_remaining_balance;
+  const totalRedeemed = row.bar_tab_total_redeemed;
 
   return {
     id: row.id,
@@ -192,6 +250,12 @@ function mapSupabaseVoucherRow(row) {
     expiresAt: row.expires_at,
     status: row.status,
     redeemedAt: row.redeemed_at,
+    barTab: {
+      original: originalBalance == null ? null : Number(originalBalance),
+      remaining: remainingBalance == null ? null : Number(remainingBalance),
+      totalRedeemed: totalRedeemed == null ? null : Number(totalRedeemed),
+      redemptions: Array.isArray(row.bar_tab_redemptions) ? row.bar_tab_redemptions : []
+    },
     source: "supabase"
   };
 }
@@ -292,6 +356,48 @@ async function redeemVoucherForPartnerFromSupabase({ id, code } = {}) {
   }
 
   return mapped;
+}
+
+async function redeemBarTabForPartnerFromSupabase({ id, code, amount } = {}) {
+  const client = getSupabaseClient();
+  if (!client) {
+    throw new Error("Supabase is not configured.");
+  }
+  if (!id && !code?.trim()) {
+    throw new Error("Voucher id or code is required.");
+  }
+
+  const parsedAmount = Number(amount);
+  if (!Number.isFinite(parsedAmount)) {
+    throw new Error("A redemption amount is required.");
+  }
+
+  const { data, error } = await client.rpc("redeem_bar_tab_for_partner", {
+    p_id: id || null,
+    p_code: code?.trim() || null,
+    p_amount: parsedAmount
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Redemption] Bar Tab redeem failed:", error.message);
+    throw new Error(error.message || "Could not redeem Bar Tab.");
+  }
+
+  const payload = normalizeInvokeData(data);
+  if (!payload) {
+    throw new Error("This Bar Tab could not be redeemed. It may already be fully redeemed or invalid.");
+  }
+
+  const voucherRow = payload.voucher || payload;
+  const mapped = mapSupabaseVoucherRow(voucherRow);
+  if (!mapped) {
+    throw new Error("This Bar Tab could not be redeemed. It may already be fully redeemed or invalid.");
+  }
+
+  return {
+    voucher: mapped,
+    redemption: payload.redemption || null
+  };
 }
 
 async function fetchPartnerVouchersFromSupabase(pubId) {
@@ -754,5 +860,6 @@ window.PintDropSupabase.PartnerAuth = {
   fetchVouchers: fetchMyPubVouchersFromSupabase,
   fetchVoucherForRedemption: fetchVoucherForPartnerRedemptionFromSupabase,
   redeemVoucher: redeemVoucherForPartnerFromSupabase,
+  redeemBarTab: redeemBarTabForPartnerFromSupabase,
   saveMenu: saveMyPubMenuToSupabase
 };

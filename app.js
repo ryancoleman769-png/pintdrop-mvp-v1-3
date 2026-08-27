@@ -53,14 +53,88 @@ const DEMO_GIFTS = [
   { id: "pint", name: "Pint", price: 6.00, icon: "🍺" },
   { id: "wine", name: "Glass of Wine", price: 7.00, icon: "🍷" },
   { id: "cocktail", name: "Cocktail", price: 10.00, icon: "🍸" },
-  { id: "spirit", name: "Spirit & Mixer", price: 9.00, icon: "🥃" },
-  { id: "tab", name: "€20 Bar Tab", price: 20.00, icon: "💶" }
+  { id: "spirit", name: "Spirit & Mixer", price: 9.00, icon: "🥃" }
 ];
 
-let gifts = DEMO_GIFTS.map(gift => ({ ...gift }));
+const BAR_TAB_PRESETS = window.PintDropSupabase?.BAR_TAB_PRESET_PRICES || [20, 30];
+
+function barTabPresetFromSlug(slug) {
+  const match = /^tab-(20|30)$/.exec(String(slug || "").trim().toLowerCase());
+  return match ? Number(match[1]) : null;
+}
+
+function isExactBarTabPreset(price) {
+  return BAR_TAB_PRESETS.includes(Number(price));
+}
+
+function isBarTabSlug(slug) {
+  const value = String(slug || "").trim().toLowerCase();
+  return value === "tab" || value.startsWith("tab-");
+}
+
+function isBarTabGift(gift) {
+  if (!gift) return false;
+  if (gift.is_bar_tab || isBarTabSlug(gift.id) || isBarTabSlug(gift.slug)) return true;
+  return String(gift.name || "").toLowerCase().includes("bar tab");
+}
+
+function hasSavedDrinkSupabaseId(gift) {
+  const supabaseId = Number(gift?.supabaseId);
+  return Number.isFinite(supabaseId) && supabaseId > 0;
+}
+
+function formatBarTabGiftName(price) {
+  return `€${price} Bar Tab`;
+}
+
+function normalizeCustomerGifts(list) {
+  const standard = [];
+  const tabs = new Map();
+
+  (list || []).forEach((gift) => {
+    if (!isBarTabGift(gift)) {
+      standard.push(gift);
+      return;
+    }
+    if (gift.active === false || gift.active === 0) return;
+    // Only offer Bar Tab amounts that exist as saved drinks rows for this pub.
+    if (!hasSavedDrinkSupabaseId(gift)) return;
+
+    const slugPreset = barTabPresetFromSlug(gift.id || gift.slug);
+    const price = Number(gift.price);
+
+    if (slugPreset) {
+      if (price !== slugPreset) return;
+      tabs.set(slugPreset, {
+        ...gift,
+        id: `tab-${slugPreset}`,
+        price: slugPreset,
+        name: formatBarTabGiftName(slugPreset),
+        icon: gift.icon || "💶"
+      });
+      return;
+    }
+
+    if (!isExactBarTabPreset(price) || tabs.has(price)) return;
+    tabs.set(price, {
+      ...gift,
+      id: `tab-${price}`,
+      price,
+      name: formatBarTabGiftName(price),
+      icon: gift.icon || "💶"
+    });
+  });
+
+  return [
+    ...standard,
+    ...BAR_TAB_PRESETS.filter((price) => tabs.has(price)).map((price) => tabs.get(price))
+  ];
+}
+
+let gifts = normalizeCustomerGifts(DEMO_GIFTS.map(gift => ({ ...gift })));
 
 async function loadGiftsForPub(pub) {
-  gifts = DEMO_GIFTS.map(gift => ({ ...gift, source: "demo" }));
+  gifts = normalizeCustomerGifts(DEMO_GIFTS.map(gift => ({ ...gift, source: "demo" })));
 
   if (!pub?.supabaseId || !window.PintDropSupabase?.isConfigured?.()) {
     ensureSelectedGiftValid();
@@ -70,7 +144,10 @@ async function loadGiftsForPub(pub) {
   try {
     const remoteGifts = await window.PintDropSupabase.fetchDrinks(pub.supabaseId);
     if (remoteGifts?.length) {
-      gifts = remoteGifts;
+      gifts = normalizeCustomerGifts(remoteGifts);
+      if (pub.offersBarTab === false) {
+        gifts = gifts.filter((gift) => !isBarTabGift(gift));
+      }
     }
   } catch (error) {
     console.warn("[PintDrop] Using demo drinks after Supabase error:", error);
@@ -124,6 +201,7 @@ let paymentProcessing = false;
 let customerSubStep = "pub";
 let activeRedemptionVoucherId = null;
 let activeRedemptionVoucher = null;
+let pendingBarTabRedeemAmount = null;
 let redemptionJustConfirmed = false;
 let partnerActivityFilter = "today";
 let partnerHistoryFilter = "today";
@@ -504,9 +582,241 @@ function isVoucherForPartnerPub(voucher) {
 
 function isBarTabVoucher(voucher) {
   if (!voucher) return false;
-  const giftId = String(voucher.gift?.id || "").toLowerCase();
-  if (giftId === "tab") return true;
+  if (isBarTabGift(voucher.gift)) return true;
   return String(voucher.gift?.name || "").toLowerCase().includes("bar tab");
+}
+
+function formatBarTabAmount(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "€0.00";
+  return `€${amount.toFixed(2)}`;
+}
+
+function getBarTabOriginal(voucher) {
+  if (voucher?.barTab?.original != null && Number.isFinite(Number(voucher.barTab.original))) {
+    return Number(voucher.barTab.original);
+  }
+  return Number(voucher?.gift?.price || 0);
+}
+
+function getBarTabRemaining(voucher) {
+  if (voucher?.barTab?.remaining != null && Number.isFinite(Number(voucher.barTab.remaining))) {
+    return Number(voucher.barTab.remaining);
+  }
+  if (voucher?.status === "redeemed") return 0;
+  return getBarTabOriginal(voucher);
+}
+
+function getBarTabTotalRedeemed(voucher) {
+  if (voucher?.barTab?.totalRedeemed != null && Number.isFinite(Number(voucher.barTab.totalRedeemed))) {
+    return Number(voucher.barTab.totalRedeemed);
+  }
+  const original = getBarTabOriginal(voucher);
+  const remaining = getBarTabRemaining(voucher);
+  return Math.max(0, Math.round((original - remaining) * 100) / 100);
+}
+
+function getBarTabBalanceDisplay(voucher) {
+  return {
+    original: getBarTabOriginal(voucher),
+    redeemed: getBarTabTotalRedeemed(voucher),
+    remaining: getBarTabRemaining(voucher)
+  };
+}
+
+function fillBarTabBalanceFields(voucher, { panelId, originalId, redeemedId, remainingId } = {}) {
+  const panel = $(panelId);
+  if (!panel) return;
+  const show = isBarTabVoucher(voucher);
+  panel.classList.toggle("hidden", !show);
+  if (!show) return;
+
+  const balances = getBarTabBalanceDisplay(voucher);
+  const originalEl = $(originalId);
+  const redeemedEl = $(redeemedId);
+  const remainingEl = $(remainingId);
+  if (originalEl) originalEl.textContent = formatBarTabAmount(balances.original);
+  if (redeemedEl) redeemedEl.textContent = formatBarTabAmount(balances.redeemed);
+  if (remainingEl) remainingEl.textContent = formatBarTabAmount(balances.remaining);
+}
+
+function isBarTabFullyRedeemed(voucher) {
+  return isBarTabVoucher(voucher)
+    && (voucher.status === "redeemed" || getBarTabRemaining(voucher) <= 0);
+}
+
+function parseRedemptionAmount(raw) {
+  const normalized = String(raw ?? "").trim().replace(",", ".");
+  if (!normalized) return null;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount)) return null;
+  return Math.round(amount * 100) / 100;
+}
+
+function validateBarTabRedeemAmount(voucher, amount) {
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, error: "Enter an amount greater than €0." };
+  }
+  if (isBarTabFullyRedeemed(voucher)) {
+    return { ok: false, error: "This Bar Tab is fully redeemed." };
+  }
+  if (amount > getBarTabRemaining(voucher) + 0.001) {
+    return { ok: false, error: "Amount is more than the remaining balance." };
+  }
+  return { ok: true, amount };
+}
+
+function isBarTabRedeemAmountValid(voucher, rawAmount) {
+  const amount = parseRedemptionAmount(rawAmount);
+  return validateBarTabRedeemAmount(voucher, amount).ok;
+}
+
+function getBarTabRedeemButtonLabel(voucher, rawAmount) {
+  const amount = parseRedemptionAmount(rawAmount);
+  const check = validateBarTabRedeemAmount(voucher, amount);
+  return check.ok ? `Redeem ${formatBarTabAmount(check.amount)}` : "Redeem";
+}
+
+function applyBarTabDebit(voucher, rawAmount) {
+  if (!isBarTabVoucher(voucher)) {
+    return { ok: false, error: "This voucher is not a Bar Tab." };
+  }
+  const amount = parseRedemptionAmount(rawAmount);
+  const check = validateBarTabRedeemAmount(voucher, amount);
+  if (!check.ok) return check;
+
+  const remaining = Math.round((getBarTabRemaining(voucher) - check.amount) * 100) / 100;
+  const original = getBarTabOriginal(voucher);
+  const nextRemaining = Math.max(0, remaining);
+  const fullyRedeemed = nextRemaining <= 0;
+  return {
+    ok: true,
+    voucher: {
+      ...voucher,
+      status: fullyRedeemed ? "redeemed" : "waiting",
+      redeemedAt: fullyRedeemed
+        ? (voucher.redeemedAt || new Date().toISOString())
+        : voucher.redeemedAt,
+      barTab: {
+        original,
+        remaining: nextRemaining,
+        totalRedeemed: Math.round((original - nextRemaining) * 100) / 100,
+        redemptions: [
+          ...(voucher.barTab?.redemptions || []),
+          { amount_redeemed: check.amount, remaining_balance: nextRemaining }
+        ]
+      }
+    },
+    redemption: {
+      amount_redeemed: check.amount,
+      remaining_balance: nextRemaining
+    }
+  };
+}
+
+function formatBarTabNoticeAmount(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "€0";
+  const cents = Math.round(amount * 100);
+  if (cents % 100 === 0) return `€${cents / 100}`;
+  return `€${(cents / 100).toFixed(2)}`;
+}
+
+function isFiniteBarTabAmount(value) {
+  return value != null && Number.isFinite(Number(value));
+}
+
+function getBarTabStaffScreenState(voucher, options) {
+  const lastBarTabRedemption = options && options.lastBarTabRedemption;
+  const hasConfirmedDebit = isFiniteBarTabAmount(lastBarTabRedemption && lastBarTabRedemption.amount_redeemed);
+  const remainingFromDebit = hasConfirmedDebit && isFiniteBarTabAmount(lastBarTabRedemption.remaining_balance)
+    ? Number(lastBarTabRedemption.remaining_balance)
+    : null;
+  const remaining = remainingFromDebit != null ? remainingFromDebit : getBarTabRemaining(voucher);
+  const fullyRedeemed = isBarTabFullyRedeemed(voucher) || remaining <= 0;
+
+  if (fullyRedeemed) {
+    return {
+      hero: "❌ BAR TAB USED — DO NOT ACCEPT",
+      tone: "used",
+      instruction: "Enter the amount being spent now",
+      allowDebit: false,
+      fullyRedeemed: true,
+      showConfirmed: false,
+      redeemedNow: null,
+      remaining
+    };
+  }
+
+  if (hasConfirmedDebit) {
+    return {
+      hero: "REDEMPTION CONFIRMED",
+      tone: "confirmed",
+      instruction: "Enter the amount being spent now",
+      allowDebit: false,
+      fullyRedeemed: false,
+      showConfirmed: true,
+      redeemedNow: Number(lastBarTabRedemption.amount_redeemed),
+      remaining
+    };
+  }
+
+  return {
+    hero: "Voucher scanned — NOT YET REDEEMED",
+    tone: "waiting",
+    instruction: "Enter the amount being spent now",
+    allowDebit: true,
+    fullyRedeemed: false,
+    showConfirmed: false,
+    redeemedNow: null,
+    remaining
+  };
+}
+
+function getLatestBarTabRedemption(voucher, redemption) {
+  if (isFiniteBarTabAmount(redemption?.amount_redeemed)) {
+    return {
+      amount: Number(redemption.amount_redeemed),
+      remaining: isFiniteBarTabAmount(redemption.remaining_balance)
+        ? Number(redemption.remaining_balance)
+        : getBarTabRemaining(voucher)
+    };
+  }
+
+  const ledger = voucher?.barTab?.redemptions;
+  if (Array.isArray(ledger) && ledger.length) {
+    const last = ledger[ledger.length - 1];
+    if (isFiniteBarTabAmount(last?.amount_redeemed)) {
+      return {
+        amount: Number(last.amount_redeemed),
+        remaining: isFiniteBarTabAmount(last.remaining_balance)
+          ? Number(last.remaining_balance)
+          : getBarTabRemaining(voucher)
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildSenderNotificationText(voucher, redemption) {
+  if (!isBarTabVoucher(voucher)) {
+    return `${voucher.recipient} has just redeemed the ${voucher.gift.name} you sent at ${voucher.pub.name}.`;
+  }
+
+  const latest = getLatestBarTabRedemption(voucher, redemption);
+  const originalText = formatBarTabNoticeAmount(getBarTabOriginal(voucher));
+  const remaining = latest ? latest.remaining : getBarTabRemaining(voucher);
+  const remainingText = formatBarTabNoticeAmount(remaining);
+  const remainingClause = remaining <= 0
+    ? `Remaining balance: ${remainingText}.`
+    : `${remainingText} remaining.`;
+
+  if (latest) {
+    return `${voucher.recipient} has just redeemed ${formatBarTabNoticeAmount(latest.amount)} from the ${originalText} Bar Tab you sent at ${voucher.pub.name}. ${remainingClause}`;
+  }
+
+  return `${voucher.recipient} has just redeemed the ${originalText} Bar Tab you sent at ${voucher.pub.name}. ${remainingClause}`;
 }
 
 function storePendingPartnerRedemption(code) {
@@ -551,11 +861,20 @@ function normalizePartnerRedemptionError(error) {
     return "Please sign in to redeem vouchers.";
   }
   if (lower.includes("expired")) return "This voucher is not redeemable.";
-  if (lower.includes("bar tab")) {
-    return "Bar Tab vouchers must be redeemed with an amount from the partner dashboard.";
-  }
   if (lower.includes("permission denied")) {
     return "Redemption is unavailable right now. Please contact PintDrop support.";
+  }
+  if (lower.includes("exceeds remaining") || lower.includes("more than the remaining")) {
+    return "Amount is more than the remaining balance.";
+  }
+  if (lower.includes("greater than zero") || lower.includes("must be greater than")) {
+    return "Enter an amount greater than €0.";
+  }
+  if (lower.includes("fully redeemed") || lower.includes("already be fully redeemed")) {
+    return "This Bar Tab is fully redeemed.";
+  }
+  if (lower.includes("not a bar tab")) {
+    return "This voucher is not a Bar Tab.";
   }
   return message;
 }
@@ -827,6 +1146,10 @@ function validateGiftStep() {
     showStepError("giftStepError");
     return false;
   }
+  if (isBarTabGift(selectedGift) && !hasSavedDrinkSupabaseId(selectedGift)) {
+    showStepError("giftStepError", "That Bar Tab is not available from this pub yet.");
+    return false;
+  }
   return true;
 }
 
@@ -892,7 +1215,6 @@ function renderChoices() {
       <div class="venue-card-content">
         <div class="venue-card-top">
           <strong>${pub.name}</strong>
-          <span class="venue-rating">★ ${meta.rating}</span>
         </div>
         <small class="venue-location">${pub.town}</small>
         <span class="venue-tag">${disabled ? "Not yet available" : "Partner pub"}</span>
@@ -928,6 +1250,7 @@ function renderChoices() {
   document.querySelectorAll("[data-gift]").forEach(btn => {
     btn.onclick = () => {
       selectedGift = gifts.find(gift => gift.id === btn.dataset.gift);
+      if (!selectedGift) return;
       renderChoices();
       renderSummary();
       $("giftStepError")?.classList.add("hidden");
@@ -1136,23 +1459,15 @@ async function processBarRedemption(code, { updateHash = true } = {}) {
     return;
   }
 
-  if (isBarTabVoucher(voucher)) {
-    activeRedemptionVoucherId = voucher.id;
-    activeRedemptionVoucher = voucher;
-    if (updateHash) setBarRedemptionHash(voucher.code);
-    switchView("redemption");
-    renderRedemptionScreen(voucher, {
-      barMode: true,
-      redeemFailed: true,
-      errorMessage: "Bar Tab vouchers must be redeemed with an amount from the partner dashboard."
-    });
-    return;
-  }
-
   activeRedemptionVoucherId = voucher.id;
   activeRedemptionVoucher = voucher;
   if (updateHash) setBarRedemptionHash(voucher.code);
   switchView("redemption");
+
+  if (isBarTabVoucher(voucher)) {
+    renderRedemptionScreen(voucher, { barMode: true });
+    return;
+  }
 
   if (voucher.status === "redeemed") {
     renderRedemptionScreen(voucher, { barMode: true });
@@ -1445,7 +1760,7 @@ async function openRedemptionScreen(code, { updateHash = true } = {}) {
 
 function renderRedemptionNotFound() {
   document.querySelector(".redemption-page")?.querySelectorAll(
-    ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-actions"
+    ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-bar-tab-panel, .redemption-actions"
   ).forEach(el => el.classList.add("hidden"));
   $("redemptionEmptyMessage").textContent = "No voucher found.";
   $("redemptionEmpty")?.classList.remove("hidden");
@@ -1454,7 +1769,7 @@ function renderRedemptionNotFound() {
 
 function renderRedemptionLookupError(message) {
   document.querySelector(".redemption-page")?.querySelectorAll(
-    ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-actions"
+    ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-bar-tab-panel, .redemption-actions"
   ).forEach(el => el.classList.add("hidden"));
   $("redemptionEmptyMessage").textContent = message || "Could not look up this voucher.";
   $("redemptionEmpty")?.classList.remove("hidden");
@@ -1463,7 +1778,7 @@ function renderRedemptionLookupError(message) {
 
 function renderRedemptionWrongPub(voucher) {
   document.querySelector(".redemption-page")?.querySelectorAll(
-    ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-actions"
+    ".redemption-header, .redemption-already-banner, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-time, .redemption-success, .redemption-bar-tab-panel, .redemption-actions"
   ).forEach(el => el.classList.add("hidden"));
   $("redemptionEmptyMessage").textContent =
     `This voucher is for ${voucher.pub.name}, not O'Flaherty's Bar.`;
@@ -1471,13 +1786,14 @@ function renderRedemptionWrongPub(voucher) {
   $("redemptionConfirm")?.classList.add("hidden");
 }
 
-function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false, errorMessage = null } = {}) {
+function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false, errorMessage = null, lastBarTabRedemption = null } = {}) {
   $("redemptionEmpty")?.classList.add("hidden");
   document.querySelector(".redemption-page")?.querySelectorAll(
     ".redemption-header, .redemption-status-wrap, .redemption-gift-block, .redemption-details, .redemption-actions"
   ).forEach(el => el.classList.remove("hidden"));
 
-  const isRedeemed = voucher.status === "redeemed";
+  const barTab = isBarTabVoucher(voucher);
+  const isRedeemed = barTab ? isBarTabFullyRedeemed(voucher) : voucher.status === "redeemed";
   const giftLabel = voucher.gift.name.toUpperCase();
 
   $("redemptionGift").textContent = `${voucher.gift.icon} ${voucher.gift.name}`;
@@ -1487,11 +1803,90 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
   $("redemptionMessage").textContent = `“${voucher.message}”`;
   $("redemptionCode").textContent = voucher.code;
 
+  const barTabPanel = $("redemptionBarTabPanel");
+  const barTabError = $("redemptionBarTabError");
+  const barTabSuccess = $("redemptionBarTabSuccess");
+  const amountWrap = $("redemptionBarTabAmountWrap");
+  const amountInput = $("redemptionBarTabAmount");
+  const barTabRedeemBtn = $("redemptionBarTabRedeemBtn");
+  const holdWarning = $("redemptionBarTabHoldWarning");
+  const confirmedBlock = $("redemptionBarTabConfirmed");
+  const barTabState = barTab ? getBarTabStaffScreenState(voucher, { lastBarTabRedemption }) : null;
+  if (barTabPanel) {
+    barTabPanel.classList.toggle("hidden", !barTab);
+    if (!barTab) {
+      barTabPanel.classList.remove("is-used");
+    }
+    if (barTab && barTabState) {
+      fillBarTabBalanceFields(voucher, {
+        panelId: "redemptionBarTabPanel",
+        originalId: "redemptionBarTabOriginal",
+        redeemedId: "redemptionBarTabRedeemed",
+        remainingId: "redemptionBarTabRemaining"
+      });
+      amountWrap?.classList.toggle("hidden", !barTabState.allowDebit);
+      barTabRedeemBtn?.classList.toggle("hidden", !barTabState.allowDebit);
+      holdWarning?.classList.toggle("hidden", !barTabState.allowDebit);
+      if (amountInput) {
+        amountInput.disabled = !barTabState.allowDebit;
+        if (!barTabState.allowDebit) amountInput.value = "";
+      }
+      if (barTabRedeemBtn && !barTabState.allowDebit) {
+        barTabRedeemBtn.disabled = true;
+      }
+      barTabPanel.classList.toggle("is-used", barTabState.tone === "used");
+      const showConfirmed = barTabState.showConfirmed;
+      if (confirmedBlock) {
+        confirmedBlock.classList.toggle("hidden", !showConfirmed);
+        if (showConfirmed) {
+          const redeemedNowEl = $("redemptionBarTabRedeemedNow");
+          const confirmedRemainingEl = $("redemptionBarTabConfirmedRemaining");
+          if (redeemedNowEl) redeemedNowEl.textContent = formatBarTabAmount(barTabState.redeemedNow);
+          if (confirmedRemainingEl) confirmedRemainingEl.textContent = formatBarTabAmount(barTabState.remaining);
+        }
+      }
+      if (amountInput && barTabState.allowDebit && document.activeElement !== amountInput) {
+        amountInput.value = amountInput.value || "";
+      }
+      if (barTabRedeemBtn && barTabState.allowDebit) {
+        const raw = amountInput?.value;
+        barTabRedeemBtn.textContent = getBarTabRedeemButtonLabel(voucher, raw);
+        barTabRedeemBtn.disabled = !isBarTabRedeemAmountValid(voucher, raw);
+      }
+      if (redeemFailed && errorMessage) {
+        barTabError.textContent = errorMessage;
+        barTabError.classList.remove("hidden");
+      } else {
+        barTabError?.classList.add("hidden");
+      }
+      barTabSuccess?.classList.add("hidden");
+    }
+  }
+
   const statusEl = $("redemptionStatus");
   const successEl = $("redemptionSuccess");
   const alreadyBanner = $("redemptionAlreadyBanner");
 
-  if (redemptionJustConfirmed && isRedeemed) {
+  if (barTab && barTabState?.tone === "used") {
+    statusEl.textContent = "❌ BAR TAB USED — DO NOT ACCEPT";
+    statusEl.className = "redemption-status redemption-status-hero status redeemed redeemed-blocked bar-tab-used";
+    alreadyBanner.classList.add("hidden");
+    successEl.classList.add("hidden");
+    $("redemptionTime").classList.add("hidden");
+    hideRedemptionConfirm();
+  } else if (barTab && barTabState?.tone === "confirmed") {
+    statusEl.textContent = "REDEMPTION CONFIRMED";
+    statusEl.className = "redemption-status redemption-status-hero status redeemed redeemed-success";
+    alreadyBanner.classList.add("hidden");
+    successEl.classList.add("hidden");
+    $("redemptionTime").classList.add("hidden");
+  } else if (barTab) {
+    statusEl.textContent = "Voucher scanned — NOT YET REDEEMED";
+    statusEl.className = "redemption-status redemption-status-hero status waiting not-yet-redeemed";
+    alreadyBanner.classList.add("hidden");
+    successEl.classList.add("hidden");
+    $("redemptionTime").classList.add("hidden");
+  } else if (redemptionJustConfirmed && isRedeemed) {
     statusEl.textContent = "✅ REDEEMED";
     statusEl.className = "redemption-status redemption-status-hero status redeemed redeemed-success";
     alreadyBanner.classList.add("hidden");
@@ -1525,11 +1920,12 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
   const redeemBtn = $("redemptionRedeemBtn");
   redeemBtn.textContent = `REDEEM ${giftLabel}`;
   redeemBtn.disabled = isRedeemed;
-  redeemBtn.classList.toggle("hidden", barMode || isRedeemed);
+  redeemBtn.classList.toggle("hidden", barTab || barMode || isRedeemed);
 
   $("redemptionConfirm")?.classList.add("hidden");
-  $("redemptionConfirmCopy").textContent =
-    `Confirm ${voucher.recipient} has received their ${voucher.gift.name.toLowerCase()} at ${voucher.pub.name}.`;
+  $("redemptionConfirmCopy").textContent = barTab
+    ? `Confirm ${formatBarTabAmount(pendingBarTabRedeemAmount || parseRedemptionAmount(amountInput?.value) || 0)} from this Bar Tab for ${voucher.recipient}.`
+    : `Confirm ${voucher.recipient} has received their ${voucher.gift.name.toLowerCase()} at ${voucher.pub.name}.`;
 }
 
 function showRedemptionConfirm() {
@@ -1588,6 +1984,63 @@ async function redeemVoucherById(voucherId) {
   return { ok: true, voucher: local };
 }
 
+async function redeemBarTabById(voucherId, rawAmount) {
+  const voucher = activeRedemptionVoucher?.id === voucherId
+    ? activeRedemptionVoucher
+    : readVouchers().find(v => v.id === voucherId);
+  if (!voucher) {
+    return { ok: false, error: "Voucher not found." };
+  }
+  if (!isBarTabVoucher(voucher)) {
+    return { ok: false, error: "This voucher is not a Bar Tab." };
+  }
+
+  const amount = parseRedemptionAmount(rawAmount);
+  const check = validateBarTabRedeemAmount(voucher, amount);
+  if (!check.ok) return check;
+
+  if (window.PintDropSupabase?.isConfigured?.()) {
+    if (!hasActivePartnerProfile()) {
+      return { ok: false, error: "Please sign in to redeem vouchers." };
+    }
+
+    const auth = getPartnerAuthApi();
+    if (!auth?.redeemBarTab) {
+      return { ok: false, error: "Bar Tab redemption is not available in this build." };
+    }
+
+    try {
+      const remote = await auth.redeemBarTab({
+        id: voucherId,
+        code: voucher.code,
+        amount: check.amount
+      });
+      if (!remote?.voucher) {
+        return { ok: false, error: "This Bar Tab could not be redeemed. It may already be fully redeemed or invalid." };
+      }
+      return {
+        ok: true,
+        voucher: remote.voucher,
+        redemption: remote.redemption
+      };
+    } catch (error) {
+      console.warn("[PintDrop Partner Redemption] Bar Tab redeem error:", error);
+      return { ok: false, error: normalizePartnerRedemptionError(error) };
+    }
+  }
+
+  const localResult = applyBarTabDebit(voucher, check.amount);
+  if (!localResult.ok) return localResult;
+
+  const vouchers = readVouchers();
+  const index = vouchers.findIndex(v => v.id === voucherId);
+  if (index >= 0) {
+    vouchers[index] = localResult.voucher;
+    writeVouchers(vouchers);
+  }
+  return localResult;
+}
+
 function buildPendingOrder() {
   const recipient = $("recipientName").value.trim();
   const phone = getNormalizedRecipientPhone();
@@ -1643,6 +2096,14 @@ function renderReview() {
 
 async function startStripeCheckout() {
   if (!pendingOrder || paymentProcessing) return;
+
+  if (isBarTabGift(pendingOrder.gift) && !hasSavedDrinkSupabaseId(pendingOrder.gift)) {
+    showStepError(
+      "reviewCheckoutError",
+      "That Bar Tab is not available from this pub yet."
+    );
+    return;
+  }
 
   paymentProcessing = true;
   const button = $("goToPayment");
@@ -1836,6 +2297,11 @@ function getCheckoutDrinkId(gift, pub) {
 }
 
 async function createStripeCheckoutSession() {
+  const drinkId = getCheckoutDrinkId(pendingOrder.gift, pendingOrder.pub);
+  if (isBarTabGift(pendingOrder.gift) && (!Number.isFinite(drinkId) || drinkId <= 0)) {
+    throw new Error("That Bar Tab is not available from this pub yet.");
+  }
+
   const response = await fetch("/api/create-checkout-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1844,7 +2310,7 @@ async function createStripeCheckoutSession() {
       giftPrice: pendingOrder.gift.price,
       fee: pendingOrder.fee,
       giftName: pendingOrder.gift.name,
-      drinkId: getCheckoutDrinkId(pendingOrder.gift, pendingOrder.pub),
+      drinkId,
       drinkIcon: pendingOrder.gift.icon,
       pubName: pendingOrder.pub.name,
       pubLocation: pendingOrder.pub.town,
@@ -2230,22 +2696,31 @@ function populateVoucherFields(voucher, prefix = "") {
       ? formatDate(voucher.expiresAt.slice(0, 10))
       : "";
   }
+  const barTab = isBarTabVoucher(voucher);
+  const isRedeemed = barTab ? isBarTabFullyRedeemed(voucher) : voucher.status === "redeemed";
   const statusEl = id("Status");
   if (prefix === "voucher") {
-    statusEl.textContent = voucher.status === "redeemed" ? "REDEEMED" : "VALID";
-    statusEl.className = `status voucher-status-badge ${voucher.status === "redeemed" ? "redeemed" : "waiting"}`;
-    document.querySelector("#voucher .wallet-pass")?.classList.toggle("is-redeemed", voucher.status === "redeemed");
+    statusEl.textContent = isRedeemed ? "REDEEMED" : "VALID";
+    statusEl.className = `status voucher-status-badge ${isRedeemed ? "redeemed" : "waiting"}`;
+    document.querySelector("#voucher .wallet-pass")?.classList.toggle("is-redeemed", isRedeemed);
   } else {
-    statusEl.textContent = voucher.status === "redeemed" ? "REDEEMED" : "VALID";
-    statusEl.className = `status ${voucher.status}`;
+    statusEl.textContent = isRedeemed ? "REDEEMED" : "VALID";
+    statusEl.className = `status ${isRedeemed ? "redeemed" : "waiting"}`;
   }
   pulseStatusBadge(statusEl);
+
+  fillBarTabBalanceFields(voucher, {
+    panelId: `${prefix}BarTabPanel`,
+    originalId: `${prefix}BarTabOriginal`,
+    redeemedId: `${prefix}BarTabRedeemed`,
+    remainingId: `${prefix}BarTabRemaining`
+  });
 
   const redeemedStamp = $(prefix === "voucher" ? "redeemedStamp" : `${prefix}RedeemedStamp`);
   const redeemedWhen = $(prefix === "voucher" ? "redeemedWhen" : `${prefix}RedeemedWhen`);
   if (redeemedStamp) {
-    redeemedStamp.classList.toggle("hidden", voucher.status !== "redeemed");
-    if (voucher.status === "redeemed" && voucher.redeemedAt && redeemedWhen) {
+    redeemedStamp.classList.toggle("hidden", !isRedeemed);
+    if (isRedeemed && voucher.redeemedAt && redeemedWhen) {
       redeemedWhen.textContent = formatDateTime(voucher.redeemedAt);
     }
   }
@@ -2318,7 +2793,10 @@ function renderSms() {
   $("smsGiftIcon").textContent = voucher.gift.icon;
   $("smsGift").textContent = voucher.gift.name;
   $("smsPub").textContent = `${voucher.pub.name}, ${voucher.pub.town}`;
-  $("smsRedeemedNotice").classList.toggle("hidden", voucher.status !== "redeemed");
+  $("smsRedeemedNotice").classList.toggle(
+    "hidden",
+    isBarTabVoucher(voucher) ? !isBarTabFullyRedeemed(voucher) : voucher.status !== "redeemed"
+  );
   $("smsTime").textContent = new Date(voucher.createdAt).toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit" });
 
   const overlay = $("smsWalletOverlay");
@@ -3056,10 +3534,79 @@ function normalizePartnerMenuError(error) {
   if (lower.includes("price is required")) return "Enter a price for each available drink.";
   if (lower.includes("at least one standard drink")) return "Make at least one standard drink available.";
   if (lower.includes("enable bar tab")) return "Turn on Offer Bar Tab before configuring it.";
+  if (lower.includes("choose at least one bar tab amount")) return "Choose at least one Bar Tab amount (€20 or €30).";
   if (lower.includes("too many menu items")) return "Too many menu items.";
   if (lower.includes("at least one drink is required")) return "Add at least one drink.";
 
   return message;
+}
+
+function getSelectedPartnerBarTabPresets() {
+  return [...document.querySelectorAll('input[name="partnerBarTabAmount"]:checked')]
+    .map((input) => Number(input.value))
+    .filter((value) => BAR_TAB_PRESETS.includes(value));
+}
+
+function setSelectedPartnerBarTabPresets(prices) {
+  const selected = new Set((prices || []).filter((value) => BAR_TAB_PRESETS.includes(Number(value))).map(Number));
+  document.querySelectorAll('input[name="partnerBarTabAmount"]').forEach((input) => {
+    input.checked = selected.has(Number(input.value));
+  });
+}
+
+function partnerMenuBarTabItems() {
+  const items = Array.isArray(partnerMenuData?.items) ? partnerMenuData.items : [];
+  return items.filter((item) => item.is_bar_tab || isBarTabSlug(item.slug));
+}
+
+function partnerMenuLegacyBarTabItem() {
+  return partnerMenuBarTabItems().find((item) => item.slug === "tab" && item.saved !== false) || null;
+}
+
+function savedPartnerBarTabPresetPrices() {
+  const prices = [];
+  const seen = new Set();
+
+  partnerMenuBarTabItems().forEach((item) => {
+    if (item.saved === false || !item.active) return;
+    const slugPreset = barTabPresetFromSlug(item.slug);
+    if (slugPreset && Number(item.price) === slugPreset && !seen.has(slugPreset)) {
+      seen.add(slugPreset);
+      prices.push(slugPreset);
+    }
+  });
+
+  if (prices.length) return prices;
+
+  const legacy = partnerMenuLegacyBarTabItem();
+  if (legacy?.active && isExactBarTabPreset(legacy.price) && !seen.has(Number(legacy.price))) {
+    prices.push(Number(legacy.price));
+  }
+
+  return prices;
+}
+
+function updatePartnerBarTabLegacyNotice() {
+  const notice = $("partnerMenuBarTabLegacy");
+  if (!notice) return;
+
+  const offersBarTab = Boolean($("partnerMenuOfferBarTab")?.checked);
+  const legacy = partnerMenuLegacyBarTabItem();
+  const hasLegacyNonPreset = Boolean(
+    legacy
+    && legacy.saved !== false
+    && Number(legacy.price) > 0
+    && !isExactBarTabPreset(legacy.price)
+  );
+
+  if (!offersBarTab || !hasLegacyNonPreset) {
+    notice.classList.add("hidden");
+    notice.textContent = "";
+    return;
+  }
+
+  notice.textContent = "Your saved Bar Tab amount isn’t €20 or €30. Choose one or both of those amounts to keep offering Bar Tab. The old amount is left unchanged until you save.";
+  notice.classList.remove("hidden");
 }
 
 function formatPartnerMenuPrice(value) {
@@ -3085,7 +3632,7 @@ function renderPartnerMenuForm() {
   }
 
   const items = Array.isArray(partnerMenuData.items) ? partnerMenuData.items : [];
-  const standardItems = items.filter(item => !item.is_bar_tab);
+  const standardItems = items.filter(item => !item.is_bar_tab && !isBarTabSlug(item.slug));
 
   list.innerHTML = standardItems.map((item) => {
     const priceValue = formatPartnerMenuPrice(item.price);
@@ -3114,18 +3661,15 @@ function renderPartnerMenuForm() {
     `;
   }).join("");
 
-  const tabItem = items.find(item => item.is_bar_tab) || null;
   const offersBarTab = Boolean(partnerMenuData.offers_bar_tab);
   if (barTabBlock) {
     const offerCheckbox = $("partnerMenuOfferBarTab");
     const fields = $("partnerMenuBarTabFields");
-    const priceInput = $("partnerMenuBarTabPrice");
-    const activeInput = $("partnerMenuBarTabActive");
 
     if (offerCheckbox) offerCheckbox.checked = offersBarTab;
     if (fields) fields.classList.toggle("hidden", !offersBarTab);
-    if (priceInput) priceInput.value = formatPartnerMenuPrice(tabItem?.price);
-    if (activeInput) activeInput.checked = Boolean(tabItem?.active);
+    setSelectedPartnerBarTabPresets(savedPartnerBarTabPresetPrices());
+    updatePartnerBarTabLegacyNotice();
   }
 }
 
@@ -3147,13 +3691,15 @@ function collectPartnerMenuPayload() {
 
   const offersBarTab = Boolean($("partnerMenuOfferBarTab")?.checked);
   if (offersBarTab) {
-    const rawTabPrice = String($("partnerMenuBarTabPrice")?.value || "").trim();
-    const tabItem = {
-      slug: "tab",
-      active: Boolean($("partnerMenuBarTabActive")?.checked)
-    };
-    if (rawTabPrice) tabItem.price = Number(rawTabPrice);
-    items.push(tabItem);
+    const selected = new Set(getSelectedPartnerBarTabPresets());
+    BAR_TAB_PRESETS.forEach((price) => {
+      const item = {
+        slug: `tab-${price}`,
+        active: selected.has(price)
+      };
+      if (selected.has(price)) item.price = price;
+      items.push(item);
+    });
   }
 
   return { offers_bar_tab: offersBarTab, items };
@@ -3161,23 +3707,25 @@ function collectPartnerMenuPayload() {
 
 function validatePartnerMenuPayload(payload) {
   const items = payload?.items || [];
-  const standardActive = items.filter(item => item.slug !== "tab" && item.active);
+  const standardActive = items.filter(item => !isBarTabSlug(item.slug) && item.active);
 
   if (!standardActive.length) {
     return "Make at least one standard drink available.";
   }
 
   for (const item of items) {
-    if (!item.active) continue;
+    if (!item.active || isBarTabSlug(item.slug)) continue;
     if (!Number.isFinite(item.price) || item.price <= 0 || item.price > 500) {
       return "Enter a valid price for each available drink (€0.01–€500).";
     }
   }
 
   if (payload.offers_bar_tab) {
-    const tab = items.find(item => item.slug === "tab");
-    if (tab?.active && (!Number.isFinite(tab.price) || tab.price <= 0 || tab.price > 500)) {
-      return "Enter a valid Bar Tab price (€0.01–€500).";
+    const selectedPresets = items.filter((item) => (
+      item.active && BAR_TAB_PRESETS.includes(barTabPresetFromSlug(item.slug))
+    ));
+    if (!selectedPresets.length) {
+      return "Choose at least one Bar Tab amount (€20 or €30).";
     }
   }
 
@@ -3479,9 +4027,9 @@ $("redeemForm").addEventListener("submit", async (event) => {
 });
 
 
-function showSenderNotification(voucher) {
+function showSenderNotification(voucher, redemption) {
   const note = $("senderNotification");
-  $("senderNotificationText").textContent = `${voucher.recipient} has just redeemed the ${voucher.gift.name} you sent at ${voucher.pub.name}.`;
+  $("senderNotificationText").textContent = buildSenderNotificationText(voucher, redemption);
   note.classList.remove("hidden");
   requestAnimationFrame(() => note.classList.add("show"));
   setTimeout(() => note.classList.remove("show"), 5000);
@@ -3502,6 +4050,45 @@ $("redemptionRedeemBtn")?.addEventListener("click", () => {
   const voucher = activeRedemptionVoucher
     || readVouchers().find(v => v.id === activeRedemptionVoucherId);
   if (!voucher || voucher.status === "redeemed") return;
+  if (isBarTabVoucher(voucher)) return;
+  showRedemptionConfirm();
+});
+
+$("redemptionBarTabAmount")?.addEventListener("input", () => {
+  const voucher = activeRedemptionVoucher;
+  if (!voucher || !isBarTabVoucher(voucher) || isBarTabFullyRedeemed(voucher)) return;
+  const raw = $("redemptionBarTabAmount")?.value;
+  const btn = $("redemptionBarTabRedeemBtn");
+  if (btn) {
+    btn.textContent = getBarTabRedeemButtonLabel(voucher, raw);
+    btn.disabled = !isBarTabRedeemAmountValid(voucher, raw);
+  }
+});
+
+$("redemptionBarTabRedeemBtn")?.addEventListener("click", () => {
+  if (!activeRedemptionVoucherId) return;
+  const voucher = activeRedemptionVoucher
+    || readVouchers().find(v => v.id === activeRedemptionVoucherId);
+  if (!voucher || !isBarTabVoucher(voucher)) return;
+  if (isBarTabFullyRedeemed(voucher)) {
+    renderRedemptionScreen(voucher, { barMode: true });
+    return;
+  }
+
+  const amount = parseRedemptionAmount($("redemptionBarTabAmount")?.value);
+  const check = validateBarTabRedeemAmount(voucher, amount);
+  if (!check.ok) {
+    renderRedemptionScreen(voucher, {
+      barMode: true,
+      redeemFailed: true,
+      errorMessage: check.error
+    });
+    return;
+  }
+
+  pendingBarTabRedeemAmount = check.amount;
+  $("redemptionConfirmCopy").textContent =
+    `Confirm ${formatBarTabAmount(check.amount)} from this Bar Tab for ${voucher.recipient}.`;
   showRedemptionConfirm();
 });
 
@@ -3513,7 +4100,40 @@ $("redemptionConfirmOk")?.addEventListener("click", async () => {
 
   const before = activeRedemptionVoucher
     || readVouchers().find(v => v.id === activeRedemptionVoucherId);
-  if (before?.status === "redeemed") {
+  if (!before) return;
+
+  if (isBarTabVoucher(before)) {
+    if (isBarTabFullyRedeemed(before)) {
+      renderRedemptionScreen(before, { barMode: true });
+      return;
+    }
+    const result = await redeemBarTabById(activeRedemptionVoucherId, pendingBarTabRedeemAmount);
+    pendingBarTabRedeemAmount = null;
+    if (!result.ok) {
+      renderRedemptionScreen(before, {
+        barMode: true,
+        redeemFailed: true,
+        errorMessage: result.error
+      });
+      return;
+    }
+    activeRedemptionVoucher = result.voucher;
+    if ($("redemptionBarTabAmount") && !isBarTabFullyRedeemed(result.voucher)) {
+      $("redemptionBarTabAmount").value = "";
+    }
+    renderRedemptionScreen(result.voucher, {
+      barMode: true,
+      lastBarTabRedemption: result.redemption
+    });
+    partnerVouchers = null;
+    void renderPartner();
+    renderVoucher();
+    renderSms();
+    showSenderNotification(result.voucher, result.redemption);
+    return;
+  }
+
+  if (before.status === "redeemed") {
     renderRedemptionScreen(before);
     return;
   }
@@ -3957,7 +4577,16 @@ $("partnerSubmitApprovalBtn")?.addEventListener("click", () => {
 });
 
 $("partnerMenuOfferBarTab")?.addEventListener("change", (event) => {
-  $("partnerMenuBarTabFields")?.classList.toggle("hidden", !event.target.checked);
+  const enabled = Boolean(event.target.checked);
+  $("partnerMenuBarTabFields")?.classList.toggle("hidden", !enabled);
+  if (enabled) {
+    setSelectedPartnerBarTabPresets(savedPartnerBarTabPresetPrices());
+  }
+  updatePartnerBarTabLegacyNotice();
+});
+
+document.querySelectorAll('input[name="partnerBarTabAmount"]').forEach((input) => {
+  input.addEventListener("change", updatePartnerBarTabLegacyNotice);
 });
 
 $("partnerMenuForm")?.addEventListener("submit", (event) => {
