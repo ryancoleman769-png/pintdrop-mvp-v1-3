@@ -53,6 +53,10 @@ eval(extractFunction(appJs, "isBarTabFullyRedeemed"));
 eval(extractFunction(appJs, "parseRedemptionAmount"));
 eval(extractFunction(appJs, "validateBarTabRedeemAmount"));
 eval(extractFunction(appJs, "applyBarTabDebit"));
+eval(extractFunction(appJs, "formatBarTabNoticeAmount"));
+eval(extractFunction(appJs, "isFiniteBarTabAmount"));
+eval(extractFunction(appJs, "getLatestBarTabRedemption"));
+eval(extractFunction(appJs, "buildSenderNotificationText"));
 
 const processBarRedemption = appJs.slice(
   appJs.indexOf("async function processBarRedemption"),
@@ -137,6 +141,62 @@ assert.match(applyBarTabDebit(tab30, -1).error, /greater than €0/);
 assert.match(applyBarTabDebit(third.voucher, 1).error, /fully redeemed/);
 assert.strictEqual(applyBarTabDebit(pint, 1).ok, false);
 
+const senderNotifyVoucher = {
+  recipient: "Ryan Coleman",
+  pub: { name: "O'Flaherty's Bar" },
+  gift: { id: "tab-30", name: "€30 Bar Tab", price: 30 },
+  status: "waiting",
+  barTab: { original: 30, remaining: 22, totalRedeemed: 8, redemptions: [] }
+};
+assert.strictEqual(
+  buildSenderNotificationText(senderNotifyVoucher, {
+    amount_redeemed: 8,
+    remaining_balance: 22
+  }),
+  "Ryan Coleman has just redeemed €8 from the €30 Bar Tab you sent at O'Flaherty's Bar. €22 remaining."
+);
+assert.strictEqual(
+  buildSenderNotificationText({
+    ...senderNotifyVoucher,
+    barTab: { original: 30, remaining: 10, totalRedeemed: 20, redemptions: [] }
+  }, {
+    amount_redeemed: 12,
+    remaining_balance: 10
+  }),
+  "Ryan Coleman has just redeemed €12 from the €30 Bar Tab you sent at O'Flaherty's Bar. €10 remaining."
+);
+assert.strictEqual(
+  buildSenderNotificationText({
+    ...senderNotifyVoucher,
+    status: "redeemed",
+    barTab: { original: 30, remaining: 0, totalRedeemed: 30, redemptions: [] }
+  }, {
+    amount_redeemed: 5,
+    remaining_balance: 0
+  }),
+  "Ryan Coleman has just redeemed €5 from the €30 Bar Tab you sent at O'Flaherty's Bar. Remaining balance: €0."
+);
+assert.strictEqual(
+  buildSenderNotificationText({
+    ...senderNotifyVoucher,
+    barTab: { original: 30, remaining: 99, totalRedeemed: 8, redemptions: [] }
+  }, {
+    amount_redeemed: 8,
+    remaining_balance: 22
+  }),
+  "Ryan Coleman has just redeemed €8 from the €30 Bar Tab you sent at O'Flaherty's Bar. €22 remaining.",
+  "uses returned remaining_balance instead of a client-side calculation"
+);
+assert.strictEqual(
+  buildSenderNotificationText({
+    recipient: "Ryan Coleman",
+    pub: { name: "O'Flaherty's Bar" },
+    gift: { id: "pint", name: "Pint", price: 6 },
+    status: "redeemed"
+  }),
+  "Ryan Coleman has just redeemed the Pint you sent at O'Flaherty's Bar."
+);
+
 assert.ok(
   processBarRedemption.includes("if (isBarTabVoucher(voucher))"),
   "scan detects Bar Tabs before one-shot redeem"
@@ -178,7 +238,8 @@ assert.ok(indexHtml.includes('id="voucherBarTabRemaining"'));
 assert.ok(indexHtml.includes('id="voucherBarTabPanel" class="bar-tab-balance-panel hidden"'));
 assert.ok(appJs.includes("fillBarTabBalanceFields"));
 assert.ok(appJs.includes("panelId: `${prefix}BarTabPanel`"));
-assert.ok(indexHtml.includes("app.js?v=20260826-bar-tab-balances"));
+assert.ok(indexHtml.includes("app.js?v=20260826-bar-tab-redeem-msg"));
+assert.ok(appJs.includes("showSenderNotification(result.voucher, result.redemption)"));
 
 assert.ok(appJs.includes("const show = isBarTabVoucher(voucher);"));
 assert.ok(appJs.includes('panel.classList.toggle("hidden", !show)'));

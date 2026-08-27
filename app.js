@@ -703,6 +703,64 @@ function applyBarTabDebit(voucher, rawAmount) {
   };
 }
 
+function formatBarTabNoticeAmount(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "€0";
+  const cents = Math.round(amount * 100);
+  if (cents % 100 === 0) return `€${cents / 100}`;
+  return `€${(cents / 100).toFixed(2)}`;
+}
+
+function isFiniteBarTabAmount(value) {
+  return value != null && Number.isFinite(Number(value));
+}
+
+function getLatestBarTabRedemption(voucher, redemption) {
+  if (isFiniteBarTabAmount(redemption?.amount_redeemed)) {
+    return {
+      amount: Number(redemption.amount_redeemed),
+      remaining: isFiniteBarTabAmount(redemption.remaining_balance)
+        ? Number(redemption.remaining_balance)
+        : getBarTabRemaining(voucher)
+    };
+  }
+
+  const ledger = voucher?.barTab?.redemptions;
+  if (Array.isArray(ledger) && ledger.length) {
+    const last = ledger[ledger.length - 1];
+    if (isFiniteBarTabAmount(last?.amount_redeemed)) {
+      return {
+        amount: Number(last.amount_redeemed),
+        remaining: isFiniteBarTabAmount(last.remaining_balance)
+          ? Number(last.remaining_balance)
+          : getBarTabRemaining(voucher)
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildSenderNotificationText(voucher, redemption) {
+  if (!isBarTabVoucher(voucher)) {
+    return `${voucher.recipient} has just redeemed the ${voucher.gift.name} you sent at ${voucher.pub.name}.`;
+  }
+
+  const latest = getLatestBarTabRedemption(voucher, redemption);
+  const originalText = formatBarTabNoticeAmount(getBarTabOriginal(voucher));
+  const remaining = latest ? latest.remaining : getBarTabRemaining(voucher);
+  const remainingText = formatBarTabNoticeAmount(remaining);
+  const remainingClause = remaining <= 0
+    ? `Remaining balance: ${remainingText}.`
+    : `${remainingText} remaining.`;
+
+  if (latest) {
+    return `${voucher.recipient} has just redeemed ${formatBarTabNoticeAmount(latest.amount)} from the ${originalText} Bar Tab you sent at ${voucher.pub.name}. ${remainingClause}`;
+  }
+
+  return `${voucher.recipient} has just redeemed the ${originalText} Bar Tab you sent at ${voucher.pub.name}. ${remainingClause}`;
+}
+
 function storePendingPartnerRedemption(code) {
   const normalized = String(code || "").trim().toUpperCase();
   if (!normalized) return;
@@ -3895,9 +3953,9 @@ $("redeemForm").addEventListener("submit", async (event) => {
 });
 
 
-function showSenderNotification(voucher) {
+function showSenderNotification(voucher, redemption) {
   const note = $("senderNotification");
-  $("senderNotificationText").textContent = `${voucher.recipient} has just redeemed the ${voucher.gift.name} you sent at ${voucher.pub.name}.`;
+  $("senderNotificationText").textContent = buildSenderNotificationText(voucher, redemption);
   note.classList.remove("hidden");
   requestAnimationFrame(() => note.classList.add("show"));
   setTimeout(() => note.classList.remove("show"), 5000);
@@ -3997,9 +4055,7 @@ $("redemptionConfirmOk")?.addEventListener("click", async () => {
     void renderPartner();
     renderVoucher();
     renderSms();
-    if (isBarTabFullyRedeemed(result.voucher)) {
-      showSenderNotification(result.voucher);
-    }
+    showSenderNotification(result.voucher, result.redemption);
     return;
   }
 
