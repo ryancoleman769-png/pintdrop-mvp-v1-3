@@ -52,9 +52,12 @@ eval(extractFunction(appJs, "getBarTabBalanceDisplay"));
 eval(extractFunction(appJs, "isBarTabFullyRedeemed"));
 eval(extractFunction(appJs, "parseRedemptionAmount"));
 eval(extractFunction(appJs, "validateBarTabRedeemAmount"));
+eval(extractFunction(appJs, "isBarTabRedeemAmountValid"));
+eval(extractFunction(appJs, "getBarTabRedeemButtonLabel"));
 eval(extractFunction(appJs, "applyBarTabDebit"));
 eval(extractFunction(appJs, "formatBarTabNoticeAmount"));
 eval(extractFunction(appJs, "isFiniteBarTabAmount"));
+eval(extractFunction(appJs, "getBarTabStaffScreenState"));
 eval(extractFunction(appJs, "getLatestBarTabRedemption"));
 eval(extractFunction(appJs, "buildSenderNotificationText"));
 
@@ -209,6 +212,52 @@ const barTabReturn = processBarRedemption.indexOf("if (isBarTabVoucher(voucher))
 const autoRedeem = processBarRedemption.indexOf("redeemVoucherById(voucher.id)");
 assert.ok(barTabReturn >= 0 && autoRedeem > barTabReturn, "pint one-shot stays after Bar Tab return");
 assert.ok(processBarRedemption.includes("return;"), "Bar Tab scan returns before redeemVoucherById");
+assert.ok(
+  !processBarRedemption.slice(barTabReturn, autoRedeem).includes("redeemBarTabById"),
+  "scan alone does not debit a Bar Tab"
+);
+
+const scannedTab = getBarTabStaffScreenState(tab30);
+assert.strictEqual(scannedTab.hero, "Voucher scanned — NOT YET REDEEMED");
+assert.strictEqual(scannedTab.instruction, "Enter the amount being spent now");
+assert.strictEqual(scannedTab.allowDebit, true);
+assert.strictEqual(scannedTab.remaining, 30);
+assert.strictEqual(isBarTabRedeemAmountValid(tab30, ""), false);
+assert.strictEqual(isBarTabRedeemAmountValid(tab30, "0"), false);
+assert.strictEqual(isBarTabRedeemAmountValid(tab30, "-1"), false);
+assert.strictEqual(isBarTabRedeemAmountValid(tab30, "30.01"), false);
+assert.strictEqual(isBarTabRedeemAmountValid(tab30, "18"), true);
+assert.strictEqual(getBarTabRedeemButtonLabel(tab30, ""), "Redeem");
+assert.strictEqual(getBarTabRedeemButtonLabel(tab30, "18"), "Redeem €18.00");
+
+const confirmedPartial = getBarTabStaffScreenState(first.voucher, {
+  lastBarTabRedemption: { amount_redeemed: 8, remaining_balance: 22 }
+});
+assert.strictEqual(confirmedPartial.hero, "REDEMPTION CONFIRMED");
+assert.strictEqual(confirmedPartial.allowDebit, false);
+assert.strictEqual(confirmedPartial.fullyRedeemed, false);
+assert.strictEqual(confirmedPartial.redeemedNow, 8);
+assert.strictEqual(confirmedPartial.remaining, 22);
+
+const laterScan = getBarTabStaffScreenState(first.voucher);
+assert.strictEqual(laterScan.hero, "Voucher scanned — NOT YET REDEEMED");
+assert.strictEqual(laterScan.allowDebit, true);
+assert.strictEqual(laterScan.remaining, 22);
+assert.strictEqual(isBarTabRedeemAmountValid(first.voucher, "22"), true);
+assert.strictEqual(isBarTabRedeemAmountValid(first.voucher, "22.01"), false);
+
+const confirmedFinal = getBarTabStaffScreenState(third.voucher, {
+  lastBarTabRedemption: { amount_redeemed: 10, remaining_balance: 0 }
+});
+assert.strictEqual(confirmedFinal.hero, "REDEMPTION CONFIRMED");
+assert.strictEqual(confirmedFinal.remaining, 0);
+assert.strictEqual(confirmedFinal.fullyRedeemed, true);
+assert.strictEqual(confirmedFinal.allowDebit, false);
+
+const rescanEmpty = getBarTabStaffScreenState(third.voucher);
+assert.strictEqual(rescanEmpty.allowDebit, false);
+assert.strictEqual(rescanEmpty.fullyRedeemed, true);
+assert.strictEqual(isBarTabRedeemAmountValid(third.voucher, "1"), false);
 
 assert.ok(appJs.includes("auth.redeemBarTab"));
 assert.ok(configJs.includes('client.rpc("redeem_bar_tab_for_partner"'));
@@ -238,7 +287,16 @@ assert.ok(indexHtml.includes('id="voucherBarTabRemaining"'));
 assert.ok(indexHtml.includes('id="voucherBarTabPanel" class="bar-tab-balance-panel hidden"'));
 assert.ok(appJs.includes("fillBarTabBalanceFields"));
 assert.ok(appJs.includes("panelId: `${prefix}BarTabPanel`"));
-assert.ok(indexHtml.includes("app.js?v=20260826-bar-tab-redeem-msg"));
+assert.ok(indexHtml.includes("Enter the amount being spent now"));
+assert.ok(indexHtml.includes("Do not hand over drinks until redemption is confirmed."));
+assert.ok(indexHtml.includes('id="redemptionBarTabHoldWarning"'));
+assert.ok(indexHtml.includes('id="redemptionBarTabConfirmed"'));
+assert.ok(indexHtml.includes('id="redemptionBarTabRedeemedNow"'));
+assert.ok(indexHtml.includes('id="redemptionBarTabConfirmedRemaining"'));
+assert.ok(indexHtml.includes('id="redemptionBarTabRedeemBtn" type="button" class="primary redemption-redeem-btn" disabled'));
+assert.ok(appJs.includes("Voucher scanned — NOT YET REDEEMED"));
+assert.ok(appJs.includes("REDEMPTION CONFIRMED"));
+assert.ok(indexHtml.includes("app.js?v=20260827-bar-tab-staff-ux"));
 assert.ok(appJs.includes("showSenderNotification(result.voucher, result.redemption)"));
 
 assert.ok(appJs.includes("const show = isBarTabVoucher(voucher);"));

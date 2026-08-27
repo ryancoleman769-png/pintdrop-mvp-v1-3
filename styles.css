@@ -2537,19 +2537,49 @@ footer { padding: 24px; text-align: center; color: var(--muted); border-top: 1px
 }
 .redemption-bar-tab-amount-field {
   display: grid;
-  gap: 6px;
-  font-size: 0.9rem;
-  color: var(--muted);
+  gap: 8px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: inherit;
 }
 .redemption-bar-tab-amount-field input {
-  min-height: 48px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.25);
+  min-height: 64px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 2px solid var(--green);
+  background: rgba(0, 0, 0, 0.35);
   color: inherit;
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+#redemptionBarTabRedeemBtn {
+  min-height: 56px;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+#redemptionBarTabRedeemBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.redemption-bar-tab-hold-warning {
+  margin: 0;
+  color: #ffd18a;
+  font-weight: 800;
+  font-size: 0.95rem;
+  text-align: center;
+}
+.redemption-bar-tab-hold-warning.hidden,
+.redemption-bar-tab-confirmed.hidden {
+  display: none;
+}
+.redemption-bar-tab-confirmed {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(106, 203, 69, 0.14);
+  border: 1px solid rgba(106, 203, 69, 0.35);
 }
 .redemption-bar-tab-error {
   margin: 0;
@@ -3915,6 +3945,19 @@ body.partner-login-active main {
 
 .redemption-status-hero.waiting {
   min-width: 140px;
+}
+
+.redemption-status-hero.not-yet-redeemed {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  font-size: 0.95rem;
+  border-radius: 16px;
+  color: #fff8ee;
+  background: #c45c12;
+  box-shadow: 0 8px 28px rgba(196, 92, 18, 0.35);
 }
 
 .pintdrop-mark--redemption {
