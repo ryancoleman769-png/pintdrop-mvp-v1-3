@@ -729,40 +729,47 @@ function isFiniteBarTabAmount(value) {
 function getBarTabStaffScreenState(voucher, options) {
   const lastBarTabRedemption = options && options.lastBarTabRedemption;
   const hasConfirmedDebit = isFiniteBarTabAmount(lastBarTabRedemption && lastBarTabRedemption.amount_redeemed);
-  const fullyRedeemed = isBarTabFullyRedeemed(voucher);
+  const remainingFromDebit = hasConfirmedDebit && isFiniteBarTabAmount(lastBarTabRedemption.remaining_balance)
+    ? Number(lastBarTabRedemption.remaining_balance)
+    : null;
+  const remaining = remainingFromDebit != null ? remainingFromDebit : getBarTabRemaining(voucher);
+  const fullyRedeemed = isBarTabFullyRedeemed(voucher) || remaining <= 0;
 
-  if (hasConfirmedDebit) {
-    const remaining = isFiniteBarTabAmount(lastBarTabRedemption.remaining_balance)
-      ? Number(lastBarTabRedemption.remaining_balance)
-      : getBarTabRemaining(voucher);
+  if (fullyRedeemed) {
     return {
-      hero: "REDEMPTION CONFIRMED",
+      hero: "❌ BAR TAB USED — DO NOT ACCEPT",
+      tone: "used",
       instruction: "Enter the amount being spent now",
       allowDebit: false,
-      fullyRedeemed: remaining <= 0 || fullyRedeemed,
+      fullyRedeemed: true,
+      showConfirmed: false,
+      redeemedNow: null,
+      remaining
+    };
+  }
+
+  if (hasConfirmedDebit) {
+    return {
+      hero: "REDEMPTION CONFIRMED",
+      tone: "confirmed",
+      instruction: "Enter the amount being spent now",
+      allowDebit: false,
+      fullyRedeemed: false,
+      showConfirmed: true,
       redeemedNow: Number(lastBarTabRedemption.amount_redeemed),
       remaining
     };
   }
 
-  if (fullyRedeemed) {
-    return {
-      hero: "✅ REDEEMED",
-      instruction: "Enter the amount being spent now",
-      allowDebit: false,
-      fullyRedeemed: true,
-      redeemedNow: null,
-      remaining: getBarTabRemaining(voucher)
-    };
-  }
-
   return {
     hero: "Voucher scanned — NOT YET REDEEMED",
+    tone: "waiting",
     instruction: "Enter the amount being spent now",
     allowDebit: true,
     fullyRedeemed: false,
+    showConfirmed: false,
     redeemedNow: null,
-    remaining: getBarTabRemaining(voucher)
+    remaining
   };
 }
 
@@ -1807,6 +1814,10 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
   const barTabState = barTab ? getBarTabStaffScreenState(voucher, { lastBarTabRedemption }) : null;
   if (barTabPanel) {
     barTabPanel.classList.toggle("hidden", !barTab);
+    if (!barTab) {
+      barTabPanel.classList.remove("is-used");
+      $("redemptionBarTabUsedBanner")?.classList.add("hidden");
+    }
     if (barTab && barTabState) {
       fillBarTabBalanceFields(voucher, {
         panelId: "redemptionBarTabPanel",
@@ -1817,8 +1828,17 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
       amountWrap?.classList.toggle("hidden", !barTabState.allowDebit);
       barTabRedeemBtn?.classList.toggle("hidden", !barTabState.allowDebit);
       holdWarning?.classList.toggle("hidden", !barTabState.allowDebit);
-      const showConfirmed = Boolean(lastBarTabRedemption)
-        && isFiniteBarTabAmount(lastBarTabRedemption.amount_redeemed);
+      if (amountInput) {
+        amountInput.disabled = !barTabState.allowDebit;
+        if (!barTabState.allowDebit) amountInput.value = "";
+      }
+      if (barTabRedeemBtn && !barTabState.allowDebit) {
+        barTabRedeemBtn.disabled = true;
+      }
+      barTabPanel.classList.toggle("is-used", barTabState.tone === "used");
+      const usedBanner = $("redemptionBarTabUsedBanner");
+      usedBanner?.classList.toggle("hidden", barTabState.tone !== "used");
+      const showConfirmed = barTabState.showConfirmed;
       if (confirmedBlock) {
         confirmedBlock.classList.toggle("hidden", !showConfirmed);
         if (showConfirmed) {
@@ -1828,7 +1848,7 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
           if (confirmedRemainingEl) confirmedRemainingEl.textContent = formatBarTabAmount(barTabState.remaining);
         }
       }
-      if (amountInput && document.activeElement !== amountInput) {
+      if (amountInput && barTabState.allowDebit && document.activeElement !== amountInput) {
         amountInput.value = amountInput.value || "";
       }
       if (barTabRedeemBtn && barTabState.allowDebit) {
@@ -1842,14 +1862,7 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
       } else {
         barTabError?.classList.add("hidden");
       }
-      if (showConfirmed) {
-        barTabSuccess?.classList.add("hidden");
-      } else if (barTabState.fullyRedeemed) {
-        barTabSuccess.textContent = "Bar Tab fully redeemed.";
-        barTabSuccess.classList.remove("hidden");
-      } else {
-        barTabSuccess?.classList.add("hidden");
-      }
+      barTabSuccess?.classList.add("hidden");
     }
   }
 
@@ -1857,22 +1870,19 @@ function renderRedemptionScreen(voucher, { barMode = false, redeemFailed = false
   const successEl = $("redemptionSuccess");
   const alreadyBanner = $("redemptionAlreadyBanner");
 
-  if (barTab && barTabState && lastBarTabRedemption
-    && isFiniteBarTabAmount(lastBarTabRedemption.amount_redeemed)) {
+  if (barTab && barTabState?.tone === "used") {
+    statusEl.textContent = "❌ BAR TAB USED — DO NOT ACCEPT";
+    statusEl.className = "redemption-status redemption-status-hero status redeemed redeemed-blocked bar-tab-used";
+    alreadyBanner.classList.add("hidden");
+    successEl.classList.add("hidden");
+    $("redemptionTime").classList.add("hidden");
+    hideRedemptionConfirm();
+  } else if (barTab && barTabState?.tone === "confirmed") {
     statusEl.textContent = "REDEMPTION CONFIRMED";
     statusEl.className = "redemption-status redemption-status-hero status redeemed redeemed-success";
     alreadyBanner.classList.add("hidden");
     successEl.classList.add("hidden");
     $("redemptionTime").classList.add("hidden");
-  } else if (barTab && isRedeemed) {
-    statusEl.textContent = "✅ REDEEMED";
-    statusEl.className = "redemption-status redemption-status-hero status redeemed redeemed-success";
-    alreadyBanner.classList.add("hidden");
-    successEl.classList.add("hidden");
-    $("redemptionTime").classList.toggle("hidden", !voucher.redeemedAt);
-    if (voucher.redeemedAt) {
-      $("redemptionTime").textContent = `Redeemed ${formatDateTime(voucher.redeemedAt)}`;
-    }
   } else if (barTab) {
     statusEl.textContent = "Voucher scanned — NOT YET REDEEMED";
     statusEl.className = "redemption-status redemption-status-hero status waiting not-yet-redeemed";

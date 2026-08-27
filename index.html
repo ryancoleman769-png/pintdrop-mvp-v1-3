@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260827-bar-tab-staff-ux" />
+  <link rel="stylesheet" href="styles.css?v=20260827-bar-tab-used" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -641,6 +641,12 @@
           <span class="redemption-already-banner__subtitle">DO NOT SERVE</span>
         </div>
 
+        <div id="redemptionBarTabUsedBanner" class="redemption-already-banner redemption-bar-tab-used-banner hidden" role="alert">
+          <span class="redemption-bar-tab-used-x" aria-hidden="true">❌</span>
+          <strong class="redemption-already-banner__title">❌ BAR TAB USED — DO NOT ACCEPT</strong>
+          <span class="redemption-already-banner__subtitle">DO NOT ACCEPT</span>
+        </div>
+
         <div class="redemption-status-wrap">
           <span id="redemptionStatus" class="redemption-status status waiting">VALID</span>
         </div>
@@ -759,7 +765,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260827-bar-tab-staff-ux"></script>
-  <script src="app.js?v=20260827-bar-tab-staff-ux"></script>
+  <script src="supabase-config.js?v=20260827-bar-tab-used"></script>
+  <script src="app.js?v=20260827-bar-tab-used"></script>
 </body>
 </html>
