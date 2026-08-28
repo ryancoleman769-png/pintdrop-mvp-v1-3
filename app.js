@@ -219,6 +219,8 @@ const PARTNER_DEMO_SEED_KEY = "pintdrop_partner_demo_seeded";
 const PARTNER_SHIFT_STORAGE_KEY = "pintdrop_partner_shift";
 const PARTNER_PENDING_REDEEM_KEY = "pintdrop_partner_pending_redeem";
 const PARTNER_SHIFT_DURATION_MS = 12 * 60 * 60 * 1000;
+const PARTNER_AUTH_TIMEOUT_MS = 15000;
+const PARTNER_AUTH_STALL_MESSAGE = "Sign-in stalled. Check your connection and try again.";
 
 let partnerVouchers = null;
 let partnerVouchersLoadError = null;
@@ -235,8 +237,14 @@ let partnerMenuData = null;
 let partnerMenuLoading = false;
 let partnerSession = null;
 let partnerProfile = null;
+let partnerProfileOwnerUserId = null;
+let partnerProfileLoadError = false;
 let partnerOnboardingStatus = null;
 let partnerPendingConfirmEmail = "";
+let partnerUnconfirmedLogin = false;
+let partnerForcedScreen = null;
+let partnerAuthAttemptDepth = 0;
+let partnerShiftExpireInFlight = false;
 let partnerAuthReady = false;
 let partnerAuthUnsubscribe = null;
 
@@ -516,8 +524,9 @@ function seedPartnerDemoData({ force = false } = {}) {
 }
 
 function getPartnerVouchers() {
-  if (partnerVouchers) return partnerVouchers;
-  return readVouchers().filter(isPartnerVoucher);
+  if (!hasActivePartnerProfile()) return [];
+  if (Array.isArray(partnerVouchers)) return partnerVouchers;
+  return [];
 }
 
 function normalizePartnerHistoryError(error) {
@@ -549,28 +558,28 @@ async function loadPartnerVouchers() {
     return partnerVouchers;
   }
 
-  if (hasActivePartnerProfile()) {
-    const auth = getPartnerAuthApi();
-    if (!auth?.fetchVouchers) {
-      partnerVouchersLoadError = "Recent redemptions are not available in this build.";
-      partnerVouchers = [];
-      return partnerVouchers;
-    }
-
-    try {
-      const remote = await auth.fetchVouchers();
-      partnerVouchers = Array.isArray(remote) ? remote : [];
-      return partnerVouchers;
-    } catch (error) {
-      console.warn("[PintDrop Partner Vouchers] Load failed:", error);
-      partnerVouchersLoadError = normalizePartnerHistoryError(error);
-      partnerVouchers = [];
-      return partnerVouchers;
-    }
+  if (!hasActivePartnerProfile()) {
+    partnerVouchers = [];
+    return partnerVouchers;
   }
 
-  partnerVouchers = local;
-  return partnerVouchers;
+  const auth = getPartnerAuthApi();
+  if (!auth?.fetchVouchers) {
+    partnerVouchersLoadError = "Recent redemptions are not available in this build.";
+    partnerVouchers = [];
+    return partnerVouchers;
+  }
+
+  try {
+    const remote = await auth.fetchVouchers();
+    partnerVouchers = Array.isArray(remote) ? remote : [];
+    return partnerVouchers;
+  } catch (error) {
+    console.warn("[PintDrop Partner Vouchers] Load failed:", error);
+    partnerVouchersLoadError = normalizePartnerHistoryError(error);
+    partnerVouchers = [];
+    return partnerVouchers;
+  }
 }
 
 function isVoucherForPartnerPub(voucher) {
@@ -2938,6 +2947,26 @@ function getPartnerAuthApi() {
   return window.PintDropSupabase?.PartnerAuth || null;
 }
 
+function withPartnerAuthTimeout(promise, message = PARTNER_AUTH_STALL_MESSAGE) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), PARTNER_AUTH_TIMEOUT_MS);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function finishPartnerAuthAttempt() {
+  partnerAuthAttemptDepth = Math.max(0, partnerAuthAttemptDepth - 1);
+}
+
+function resetPartnerLoginButton(submitBtn) {
+  if (!submitBtn) return;
+  submitBtn.disabled = false;
+  submitBtn.textContent = "Log in";
+}
+
 function readPartnerShiftWindow() {
   try {
     const raw = localStorage.getItem(PARTNER_SHIFT_STORAGE_KEY);
@@ -2988,12 +3017,24 @@ function hasValidPartnerShift() {
 }
 
 async function expirePartnerShiftSession() {
-  const auth = getPartnerAuthApi();
-  if (auth?.signOut) {
-    await auth.signOut();
+  if (partnerShiftExpireInFlight || partnerAuthAttemptDepth > 0) {
+    return;
   }
-  clearPartnerShiftExpiry();
-  clearPartnerSessionState();
+  partnerShiftExpireInFlight = true;
+  try {
+    resetPartnerDashboardDom();
+    const auth = getPartnerAuthApi();
+    if (auth?.signOut) {
+      await withPartnerAuthTimeout(
+        auth.signOut(),
+        PARTNER_AUTH_STALL_MESSAGE
+      );
+    }
+    clearPartnerShiftExpiry();
+    clearPartnerSessionState();
+  } finally {
+    partnerShiftExpireInFlight = false;
+  }
 }
 
 function setPartnerPanelVisibility({
@@ -3019,9 +3060,51 @@ function setPartnerPanelVisibility({
   );
 }
 
+function resetPartnerDashboardDom() {
+  const pubNameEl = $("partnerDashboardPubName");
+  if (pubNameEl) pubNameEl.textContent = "Pub Partner";
+
+  const payoutStatus = $("stripeConnectStatus");
+  if (payoutStatus) payoutStatus.textContent = "Payout setup: Not started";
+  setPartnerPayoutsAction(false);
+
+  const menuList = $("partnerMenuItems");
+  if (menuList) menuList.innerHTML = "";
+  const offerBarTab = $("partnerMenuOfferBarTab");
+  if (offerBarTab) offerBarTab.checked = false;
+  $("partnerMenuBarTabFields")?.classList.add("hidden");
+  document.querySelectorAll('input[name="partnerBarTabAmount"]').forEach((input) => {
+    input.checked = false;
+  });
+
+  const historyErrorEl = $("partnerHistoryError");
+  if (historyErrorEl) {
+    historyErrorEl.textContent = "";
+    historyErrorEl.classList.add("hidden");
+  }
+  const activity = $("activityList");
+  if (activity) activity.innerHTML = "";
+
+  const menuErrorEl = $("partnerMenuError");
+  if (menuErrorEl) {
+    menuErrorEl.textContent = "";
+    menuErrorEl.classList.add("hidden");
+  }
+  $("partnerMenuSuccess")?.classList.add("hidden");
+  $("partnerOnboardingCard")?.classList.add("hidden");
+  showPartnerOnboardingError("");
+  showPartnerOnboardingSuccess("");
+  const redeemResult = $("redeemResult");
+  if (redeemResult) redeemResult.innerHTML = "";
+
+  $("partnerDashboard")?.classList.add("hidden");
+}
+
 function clearPartnerSessionState() {
   partnerSession = null;
   partnerProfile = null;
+  partnerProfileOwnerUserId = null;
+  partnerProfileLoadError = false;
   partnerOnboardingStatus = null;
   partnerStripeConnectData = null;
   partnerMenuData = null;
@@ -3030,14 +3113,53 @@ function clearPartnerSessionState() {
   partnerVouchersLoadError = null;
 }
 
+function isEmailNotConfirmedError(error) {
+  return String(error?.message || error || "").toLowerCase().includes("email not confirmed");
+}
+
+async function preparePartnerAuthAttempt({ forcedScreen = null } = {}) {
+  // Do not localStorage.clear() or delete invite/claim tokens.
+  // Owner-invite tokens (if present) must survive logout and account switch.
+  partnerAuthAttemptDepth += 1;
+  partnerForcedScreen = forcedScreen;
+  partnerUnconfirmedLogin = false;
+  if (forcedScreen !== "confirmEmail") {
+    partnerPendingConfirmEmail = "";
+  }
+
+  resetPartnerDashboardDom();
+  clearPartnerSessionState();
+  clearPartnerShiftExpiry();
+
+  const auth = getPartnerAuthApi();
+  if (auth?.signOut) {
+    try {
+      await withPartnerAuthTimeout(
+        auth.signOut(),
+        PARTNER_AUTH_STALL_MESSAGE
+      );
+    } catch (error) {
+      console.warn("[PintDrop Partner Auth] Could not clear previous session:", error);
+    }
+  }
+}
+
 async function applyPartnerSession(session) {
-  if (session && isPartnerShiftExpired()) {
+  const shiftExpired = isPartnerShiftExpired();
+  const shouldExpire = window.PintDropPartnerAuthView?.shouldExpirePartnerShiftOnSession({
+    session,
+    authAttemptInProgress: partnerAuthAttemptDepth > 0,
+    shiftExpired
+  });
+  if (shouldExpire) {
     await expirePartnerShiftSession();
     return "logged_out";
   }
 
   partnerSession = session || null;
   partnerProfile = null;
+  partnerProfileOwnerUserId = null;
+  partnerProfileLoadError = false;
   partnerOnboardingStatus = null;
   partnerStripeConnectData = null;
 
@@ -3046,29 +3168,48 @@ async function applyPartnerSession(session) {
     return "logged_out";
   }
 
+  if (!isPartnerEmailConfirmed()) {
+    return "needs_confirmation";
+  }
+
   const auth = getPartnerAuthApi();
   if (!auth?.fetchProfile) {
     clearPartnerSessionState();
     return "denied";
   }
 
-  const profile = await auth.fetchProfile();
+  let profile = null;
+  try {
+    profile = await withPartnerAuthTimeout(
+      auth.fetchProfile(),
+      PARTNER_AUTH_STALL_MESSAGE
+    );
+  } catch (error) {
+    console.warn("[PintDrop Partner Auth] profile load error:", error);
+    partnerProfile = null;
+    partnerProfileOwnerUserId = null;
+    partnerProfileLoadError = true;
+    return "load_error";
+  }
+
   partnerOnboardingStatus = await refreshPartnerOnboardingStatus();
 
-  if (profile?.pub_id) {
+  const pubId = Number(profile?.pub_id);
+  if (Number.isFinite(pubId) && pubId > 0) {
     partnerProfile = profile;
+    partnerProfileOwnerUserId = partnerSession.user?.id || null;
     return "logged_in";
   }
 
   partnerProfile = null;
-  if (!isPartnerEmailConfirmed()) {
-    return "needs_confirmation";
-  }
-
+  partnerProfileOwnerUserId = null;
   return "needs_registration";
 }
 
 async function handlePartnerAuthStateChange(session) {
+  if (partnerAuthAttemptDepth > 0) {
+    return;
+  }
   const wasLoggedIn = hasActivePartnerProfile();
   await applyPartnerSession(session);
   if ($("partner")?.classList.contains("active")) {
@@ -3109,21 +3250,28 @@ async function ensurePartnerAuthReady() {
 }
 
 function hasActivePartnerProfile() {
+  const sessionUserId = partnerSession?.user?.id || null;
   return Boolean(
     hasValidPartnerShift()
     && partnerSession
+    && isPartnerEmailConfirmed()
     && partnerProfile
     && Number.isFinite(Number(partnerProfile.pub_id))
     && Number(partnerProfile.pub_id) > 0
+    && sessionUserId
+    && partnerProfileOwnerUserId === sessionUserId
+    && !partnerProfileLoadError
   );
 }
 
 function isPartnerEmailConfirmed() {
-  if (typeof partnerOnboardingStatus?.email_confirmed === "boolean") {
-    return partnerOnboardingStatus.email_confirmed;
-  }
   const user = partnerSession?.user;
-  return Boolean(user?.email_confirmed_at || user?.confirmed_at);
+  if (!user) return false;
+  if (user.email_confirmed_at || user.confirmed_at) return true;
+  if (typeof partnerOnboardingStatus?.email_confirmed === "boolean") {
+    return partnerOnboardingStatus.email_confirmed === true;
+  }
+  return false;
 }
 
 async function refreshPartnerOnboardingStatus() {
@@ -3737,7 +3885,8 @@ async function loadPartnerMenu() {
   partnerMenuLoading = false;
 
   if (!hasActivePartnerProfile()) {
-    renderPartnerMenuForm();
+    const list = $("partnerMenuItems");
+    if (list) list.innerHTML = "";
     return;
   }
 
@@ -3839,6 +3988,7 @@ async function renderPartner() {
   await ensurePartnerAuthReady();
 
   if (!getPartnerAuthApi()) {
+    resetPartnerDashboardDom();
     setPartnerPanelVisibility({ login: true });
     const errorEl = $("partnerLoginError");
     if (errorEl) {
@@ -3853,48 +4003,69 @@ async function renderPartner() {
     return;
   }
 
-  if (!partnerSession) {
-    if (partnerPendingConfirmEmail) {
-      setPartnerConfirmEmailCopy(partnerPendingConfirmEmail);
-      setPartnerPanelVisibility({ confirmEmail: true });
-      return;
-    }
-    setPartnerPanelVisibility({ login: true });
+  if (partnerSession) {
+    await applyPartnerSession(partnerSession);
+  }
+
+  const viewApi = window.PintDropPartnerAuthView;
+  const view = viewApi?.resolvePartnerAuthView({
+    session: partnerSession,
+    emailConfirmed: isPartnerEmailConfirmed(),
+    profile: partnerProfile,
+    profileOwnerUserId: partnerProfileOwnerUserId,
+    pendingConfirmEmail: partnerPendingConfirmEmail,
+    unconfirmedLogin: partnerUnconfirmedLogin,
+    profileLoadError: partnerProfileLoadError,
+    forcedScreen: partnerForcedScreen
+  }) || "login";
+
+  if (view !== "dashboard") {
+    resetPartnerDashboardDom();
+  }
+
+  if (view === "signup") {
+    setPartnerPanelVisibility({ signup: true });
     return;
   }
 
-  const sessionState = partnerProfile?.pub_id
-    ? "logged_in"
-    : (await applyPartnerSession(partnerSession));
+  if (view === "confirmEmail") {
+    setPartnerConfirmEmailCopy(
+      partnerSession?.user?.email || partnerPendingConfirmEmail,
+      { unconfirmedLogin: partnerUnconfirmedLogin }
+    );
+    setPartnerPanelVisibility({ confirmEmail: true });
+    return;
+  }
 
-  if (sessionState === "needs_registration") {
+  if (view === "register") {
+    partnerForcedScreen = null;
     partnerPendingConfirmEmail = "";
     setPartnerPanelVisibility({ register: true });
     return;
   }
 
-  if (sessionState === "needs_confirmation") {
-    setPartnerConfirmEmailCopy(partnerSession?.user?.email || partnerPendingConfirmEmail);
-    setPartnerPanelVisibility({ confirmEmail: true });
+  if (view !== "dashboard" || !hasActivePartnerProfile()) {
+    if (partnerProfileLoadError) {
+      const errorEl = $("partnerLoginError");
+      if (errorEl) {
+        errorEl.textContent = "Could not load your pub. Please try again.";
+        errorEl.classList.remove("hidden");
+      }
+    }
+    if (view !== "signup" && view !== "confirmEmail" && view !== "register") {
+      setPartnerPanelVisibility({ login: true });
+    }
     return;
   }
 
-  if (sessionState === "denied") {
-    setPartnerPanelVisibility({ denied: true });
-    return;
-  }
-
-  if (sessionState !== "logged_in") {
-    setPartnerPanelVisibility({ login: true });
-    return;
-  }
-
+  partnerForcedScreen = null;
   partnerPendingConfirmEmail = "";
+  partnerUnconfirmedLogin = false;
   setPartnerPanelVisibility({ dashboard: true });
 
   const pubNameEl = $("partnerDashboardPubName");
-  if (pubNameEl && partnerProfile?.pub_name) {
-    pubNameEl.textContent = partnerProfile.pub_name;
+  if (pubNameEl) {
+    pubNameEl.textContent = partnerProfile?.pub_name || "Pub Partner";
   }
 
   await refreshPartnerOnboardingStatus();
@@ -4370,24 +4541,64 @@ function resetPartnerSignupForm() {
   setPartnerSignupBusy(false);
 }
 
-function setPartnerConfirmEmailCopy(email) {
+function setPartnerConfirmEmailCopy(email, { unconfirmedLogin = false } = {}) {
   const messageEl = $("partnerConfirmEmailMessage");
-  if (!messageEl) return;
   const trimmed = String(email || "").trim();
-  messageEl.textContent = trimmed
-    ? `We sent a confirmation link to ${trimmed}. Confirm your email, then log in to create your pub account.`
-    : "Check your inbox and confirm your email, then log in to create your pub account.";
+  if (messageEl) {
+    if (unconfirmedLogin) {
+      messageEl.textContent = trimmed
+        ? `Email not confirmed. Confirm ${trimmed} before you can open a pub dashboard.`
+        : "Email not confirmed. Confirm your email before you can open a pub dashboard.";
+    } else {
+      messageEl.textContent = trimmed
+        ? `We sent a confirmation link to ${trimmed}. Confirm your email, then log in to create your pub account.`
+        : "Check your inbox and confirm your email, then log in to create your pub account.";
+    }
+  }
+  const errorEl = $("partnerConfirmEmailError");
+  if (errorEl) {
+    errorEl.textContent = "";
+    errorEl.classList.add("hidden");
+  }
+  const statusEl = $("partnerConfirmEmailStatus");
+  if (statusEl) {
+    statusEl.textContent = "";
+    statusEl.classList.add("hidden");
+  }
 }
 
-function showPartnerLoginScreen() {
+function showPartnerConfirmEmailError(message) {
+  const errorEl = $("partnerConfirmEmailError");
+  if (!errorEl) return;
+  errorEl.textContent = message || "";
+  errorEl.classList.toggle("hidden", !message);
+}
+
+function showPartnerConfirmEmailStatus(message) {
+  const statusEl = $("partnerConfirmEmailStatus");
+  if (!statusEl) return;
+  statusEl.textContent = message || "";
+  statusEl.classList.toggle("hidden", !message);
+}
+
+async function showPartnerLoginScreen() {
+  partnerForcedScreen = "login";
+  partnerUnconfirmedLogin = false;
   partnerPendingConfirmEmail = "";
+  resetPartnerDashboardDom();
   setPartnerPanelVisibility({ login: true });
 }
 
-function showPartnerSignupScreen() {
+async function showPartnerSignupScreen() {
   showPartnerSignupError("");
   setPartnerSignupBusy(false);
-  setPartnerPanelVisibility({ signup: true });
+  try {
+    await preparePartnerAuthAttempt({ forcedScreen: "signup" });
+    resetPartnerDashboardDom();
+    setPartnerPanelVisibility({ signup: true });
+  } finally {
+    finishPartnerAuthAttempt();
+  }
 }
 
 function validatePartnerSignupFields(email, password, confirmPassword) {
@@ -4444,29 +4655,44 @@ async function handlePartnerSignupSubmit(event) {
   }
 
   setPartnerSignupBusy(true, "Creating your account…");
-  const result = await auth.signUp(email, password);
+  try {
+    await preparePartnerAuthAttempt({ forcedScreen: "signup" });
+    const result = await withPartnerAuthTimeout(
+      auth.signUp(email, password),
+      PARTNER_AUTH_STALL_MESSAGE
+    );
 
-  if (!result?.ok) {
+    if (!result?.ok) {
+      showPartnerSignupError(normalizePartnerSignupError(result?.error));
+      setPartnerPanelVisibility({ signup: true });
+      return;
+    }
+
+    // Auth user only. Never create a pub from this step.
+    if (result.needsEmailConfirmation || !result.session) {
+      partnerForcedScreen = null;
+      partnerPendingConfirmEmail = email;
+      partnerUnconfirmedLogin = false;
+      resetPartnerDashboardDom();
+      setPartnerConfirmEmailCopy(email);
+      setPartnerPanelVisibility({ confirmEmail: true });
+      return;
+    }
+
+    partnerPendingConfirmEmail = "";
+    partnerForcedScreen = null;
+    setPartnerShiftExpiry();
+    await applyPartnerSession(result.session || (await auth.getSession()));
+    resetPartnerSignupForm();
+    await renderPartner();
+  } catch (error) {
+    resetPartnerDashboardDom();
+    showPartnerSignupError(error?.message || PARTNER_AUTH_STALL_MESSAGE);
+    setPartnerPanelVisibility({ signup: true });
+  } finally {
+    finishPartnerAuthAttempt();
     setPartnerSignupBusy(false);
-    showPartnerSignupError(normalizePartnerSignupError(result?.error));
-    return;
   }
-
-  // Auth user only. Never create a pub from this step.
-  if (result.needsEmailConfirmation || !result.session) {
-    setPartnerSignupBusy(false);
-    partnerPendingConfirmEmail = email;
-    setPartnerConfirmEmailCopy(email);
-    setPartnerPanelVisibility({ confirmEmail: true });
-    return;
-  }
-
-  partnerPendingConfirmEmail = "";
-  setPartnerShiftExpiry();
-  await applyPartnerSession(result.session || (await auth.getSession()));
-  setPartnerSignupBusy(false);
-  resetPartnerSignupForm();
-  await renderPartner();
 }
 
 async function handlePartnerLoginSubmit(event) {
@@ -4492,38 +4718,64 @@ async function handlePartnerLoginSubmit(event) {
       errorEl.textContent = "Partner login is not available.";
       errorEl.classList.remove("hidden");
     }
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Log in";
-    }
+    resetPartnerLoginButton(submitBtn);
     return;
   }
 
-  setPartnerShiftExpiry();
-  const result = await auth.signIn(email, password);
-  if (!result.ok) {
+  try {
+    await preparePartnerAuthAttempt({ forcedScreen: "login" });
+    setPartnerPanelVisibility({ login: true });
+    const result = await withPartnerAuthTimeout(
+      auth.signIn(email, password),
+      PARTNER_AUTH_STALL_MESSAGE
+    );
+    if (!result.ok) {
+      resetPartnerDashboardDom();
+      clearPartnerSessionState();
+      clearPartnerShiftExpiry();
+      if (isEmailNotConfirmedError(result.error)) {
+        partnerForcedScreen = null;
+        partnerUnconfirmedLogin = true;
+        partnerPendingConfirmEmail = String(email || "").trim();
+        setPartnerConfirmEmailCopy(partnerPendingConfirmEmail, { unconfirmedLogin: true });
+        setPartnerPanelVisibility({ confirmEmail: true });
+      } else {
+        partnerForcedScreen = "login";
+        partnerUnconfirmedLogin = false;
+        setPartnerPanelVisibility({ login: true });
+        if (errorEl) {
+          errorEl.textContent = normalizePartnerLoginError(result.error);
+          errorEl.classList.remove("hidden");
+        }
+      }
+      return;
+    }
+
+    partnerForcedScreen = null;
+    partnerUnconfirmedLogin = false;
+    setPartnerShiftExpiry();
+    await applyPartnerSession(result.session || (await auth.getSession()));
+    await renderPartner();
+    await resumePendingPartnerRedemptionIfAny();
+  } catch (error) {
+    resetPartnerDashboardDom();
+    clearPartnerSessionState();
     clearPartnerShiftExpiry();
+    partnerForcedScreen = "login";
+    setPartnerPanelVisibility({ login: true });
     if (errorEl) {
-      errorEl.textContent = normalizePartnerLoginError(result.error);
+      errorEl.textContent = error?.message || PARTNER_AUTH_STALL_MESSAGE;
       errorEl.classList.remove("hidden");
     }
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Log in";
-    }
-    return;
+  } finally {
+    finishPartnerAuthAttempt();
+    resetPartnerLoginButton(submitBtn);
   }
-
-  await applyPartnerSession(result.session || (await auth.getSession()));
-  if (submitBtn) {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Log in";
-  }
-  await renderPartner();
-  await resumePendingPartnerRedemptionIfAny();
 }
 
 async function handlePartnerLogout() {
+  resetPartnerDashboardDom();
+  setPartnerPanelVisibility({ login: true });
   const auth = getPartnerAuthApi();
   if (auth?.signOut) {
     await auth.signOut();
@@ -4531,29 +4783,62 @@ async function handlePartnerLogout() {
   clearPartnerShiftExpiry();
   clearPartnerSessionState();
   partnerPendingConfirmEmail = "";
+  partnerUnconfirmedLogin = false;
+  partnerForcedScreen = "login";
   resetPartnerRegisterForm();
   resetPartnerSignupForm();
   void renderPartner();
+}
+
+async function handlePartnerResendConfirmationEmail() {
+  const auth = getPartnerAuthApi();
+  const email = partnerPendingConfirmEmail || partnerSession?.user?.email || "";
+  const button = $("partnerConfirmEmailResendBtn");
+  if (!auth?.resendConfirmationEmail) {
+    showPartnerConfirmEmailError("Resend is not available.");
+    return;
+  }
+  if (!String(email || "").trim()) {
+    showPartnerConfirmEmailError("Enter your email on the login screen, then resend.");
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending…";
+  }
+  showPartnerConfirmEmailError("");
+  showPartnerConfirmEmailStatus("");
+
+  const result = await auth.resendConfirmationEmail(email);
+  if (button) {
+    button.disabled = false;
+    button.textContent = "Resend confirmation email";
+  }
+  if (!result?.ok) {
+    showPartnerConfirmEmailError(result?.error || "Could not resend the confirmation email.");
+    return;
+  }
+  showPartnerConfirmEmailStatus(`Confirmation email sent to ${String(email).trim()}.`);
 }
 
 $("partnerLoginForm")?.addEventListener("submit", (event) => {
   void handlePartnerLoginSubmit(event);
 });
 $("partnerCreateAccountBtn")?.addEventListener("click", () => {
-  showPartnerSignupScreen();
+  void showPartnerSignupScreen();
 });
 $("partnerSignupForm")?.addEventListener("submit", (event) => {
   void handlePartnerSignupSubmit(event);
 });
 $("partnerSignupBackToLoginBtn")?.addEventListener("click", () => {
-  showPartnerLoginScreen();
+  void showPartnerLoginScreen();
 });
 $("partnerConfirmEmailLoginBtn")?.addEventListener("click", () => {
-  if (partnerSession) {
-    void handlePartnerLogout();
-    return;
-  }
-  showPartnerLoginScreen();
+  void handlePartnerLogout();
+});
+$("partnerConfirmEmailResendBtn")?.addEventListener("click", () => {
+  void handlePartnerResendConfirmationEmail();
 });
 $("partnerRegisterForm")?.addEventListener("submit", (event) => {
   void handlePartnerRegisterSubmit(event);

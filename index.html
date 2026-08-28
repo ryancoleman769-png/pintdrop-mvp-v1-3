@@ -451,7 +451,10 @@
           <p id="partnerConfirmEmailMessage" class="partner-login-lead">
             Check your inbox and confirm your email, then log in to create your pub account.
           </p>
-          <button id="partnerConfirmEmailLoginBtn" type="button" class="primary partner-login-submit">Log in</button>
+          <p id="partnerConfirmEmailError" class="partner-login-error hidden" role="alert"></p>
+          <p id="partnerConfirmEmailStatus" class="partner-register-status hidden" role="status"></p>
+          <button id="partnerConfirmEmailResendBtn" type="button" class="primary partner-login-submit">Resend confirmation email</button>
+          <button id="partnerConfirmEmailLoginBtn" type="button" class="secondary partner-login-submit">Log in</button>
         </div>
       </div>
 
@@ -759,7 +762,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
-  <script src="supabase-config.js?v=20260827-bar-tab-used-once"></script>
-  <script src="app.js?v=20260827-bar-tab-used-once"></script>
+  <script src="partner-auth-view.js?v=20260827-partner-auth-isolation"></script>
+  <script src="supabase-config.js?v=20260827-partner-auth-isolation"></script>
+  <script src="app.js?v=20260827-partner-auth-isolation"></script>
 </body>
 </html>

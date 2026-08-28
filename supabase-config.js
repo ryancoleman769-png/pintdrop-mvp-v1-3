@@ -571,6 +571,13 @@ window.PintDropSupabase.sendVoucherSms = sendVoucherSmsFromEdge;
 window.PintDropSupabase.sendSenderConfirmation = sendSenderConfirmationFromEdge;
 window.PintDropSupabase.sendRecipientGiftEmail = sendRecipientGiftFromEdge;
 
+function getPartnerAuthRedirectTo() {
+  if (typeof location === "undefined" || !location.origin) return undefined;
+  const origin = String(location.origin || "").replace(/\/+$/, "");
+  const path = location.pathname || "/";
+  return `${origin}${path}?view=partner`;
+}
+
 async function signUpPartner(email, password) {
   const client = getSupabaseClient();
   if (!client) {
@@ -584,9 +591,7 @@ async function signUpPartner(email, password) {
     return { ok: false, error: "Email and password are required." };
   }
 
-  const redirectTo = (typeof location !== "undefined" && location.origin)
-    ? `${location.origin}${location.pathname || "/"}?view=partner`
-    : undefined;
+  const redirectTo = getPartnerAuthRedirectTo();
 
   const { data, error } = await client.auth.signUp({
     email: normalizedEmail,
@@ -709,10 +714,36 @@ async function fetchMyPartnerProfileFromSupabase() {
   const { data, error } = await client.rpc("get_my_partner_profile");
   if (error) {
     console.warn("[PintDrop Partner Auth] profile fetch failed:", error.message);
-    return null;
+    throw new Error(error.message || "Could not load partner profile.");
   }
 
   return normalizePartnerRpcJsonObject(data);
+}
+
+async function resendPartnerConfirmationEmail(email) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, error: "Supabase is not configured." };
+  }
+
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    return { ok: false, error: "Enter a valid email address." };
+  }
+
+  const redirectTo = getPartnerAuthRedirectTo();
+  const { error } = await client.auth.resend({
+    type: "signup",
+    email: normalizedEmail,
+    options: redirectTo ? { emailRedirectTo: redirectTo } : undefined
+  });
+
+  if (error) {
+    console.warn("[PintDrop Partner Auth] resend confirmation failed:", error.message);
+    return { ok: false, error: error.message || "Could not resend the confirmation email." };
+  }
+
+  return { ok: true };
 }
 
 async function fetchMyOnboardingStatusFromSupabase() {
@@ -850,6 +881,8 @@ window.PintDropSupabase.PartnerAuth = {
   signOut: signOutPartner,
   getSession: getPartnerSession,
   onAuthStateChange: onPartnerAuthStateChange,
+  getAuthRedirectTo: getPartnerAuthRedirectTo,
+  resendConfirmationEmail: resendPartnerConfirmationEmail,
   fetchProfile: fetchMyPartnerProfileFromSupabase,
   fetchOnboardingStatus: fetchMyOnboardingStatusFromSupabase,
   registerDraftPub: registerMyDraftPubFromSupabase,
