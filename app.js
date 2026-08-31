@@ -23,6 +23,47 @@ function applyCustomerPubFilter(list) {
   return sortPubs(list.filter(pub => CUSTOMER_VISIBLE_PUB_IDS.has(pub.id)));
 }
 
+const OTHER_TOWN_HEADING = "Other";
+
+function isComingSoonPickerPub(pub) {
+  return pub?.id === "local" || /^coming soon$/i.test(String(pub?.town || "").trim());
+}
+
+function pubTownHeading(pub) {
+  const town = String(pub?.town || "").trim();
+  if (!town || /^coming soon$/i.test(town)) return OTHER_TOWN_HEADING;
+  return town;
+}
+
+function partitionPickerPubs(list) {
+  const townPubs = [];
+  const comingSoonPubs = [];
+  for (const pub of list) {
+    if (isComingSoonPickerPub(pub)) comingSoonPubs.push(pub);
+    else townPubs.push(pub);
+  }
+  return { townPubs, comingSoonPubs };
+}
+
+function groupPubsByTown(list) {
+  const groups = new Map();
+  for (const pub of list) {
+    if (isComingSoonPickerPub(pub)) continue;
+    const town = pubTownHeading(pub);
+    if (!groups.has(town)) groups.set(town, []);
+    groups.get(town).push(pub);
+  }
+
+  return [...groups.keys()]
+    .sort((a, b) => {
+      if (a === OTHER_TOWN_HEADING) return 1;
+      if (b === OTHER_TOWN_HEADING) return -1;
+      return a.localeCompare(b, "en");
+    })
+    .map(town => ({ town, pubs: groups.get(town) }))
+    .filter(group => group.pubs.length > 0);
+}
+
 async function loadPubs() {
   pubs = DEMO_PUBS.map(pub => ({ ...pub }));
 
@@ -1211,11 +1252,10 @@ const venueMeta = {
   local: { rating: "—", open: false }
 };
 
-function renderChoices() {
-  $("pubList").innerHTML = pubs.map(pub => {
-    const meta = venueMeta[pub.id] || { rating: "4.8", open: pub.participating !== false };
-    const disabled = !isParticipatingPub(pub);
-    return `
+function renderVenueCard(pub) {
+  const meta = venueMeta[pub.id] || { rating: "4.8", open: pub.participating !== false };
+  const disabled = !isParticipatingPub(pub);
+  return `
     <button type="button" class="venue-card venue-card--${pub.id} ${pub.id === selectedPub.id ? "selected" : ""} ${disabled ? "is-disabled" : ""}" data-pub="${pub.id}" ${disabled ? "disabled aria-disabled=\"true\"" : ""}>
       <div class="venue-banner">
         ${pub.image ? `<img class="venue-banner-photo" src="${pub.image}" alt="${pub.name}, ${pub.town}" loading="lazy" />` : `<span class="venue-banner-icon">${pub.icon}</span>`}
@@ -1225,13 +1265,30 @@ function renderChoices() {
         <div class="venue-card-top">
           <strong>${pub.name}</strong>
         </div>
-        <small class="venue-location">${pub.town}</small>
+        <small class="venue-location">${pub.town || ""}</small>
         <span class="venue-tag">${disabled ? "Not yet available" : "Partner pub"}</span>
       </div>
       <span class="venue-check" aria-hidden="true">✓</span>
     </button>
   `;
-  }).join("");
+}
+
+function renderChoices() {
+  const { townPubs, comingSoonPubs } = partitionPickerPubs(pubs);
+  const townGroupsHtml = groupPubsByTown(townPubs).map(group => `
+    <section class="venue-town-group" data-town-group="${group.town}">
+      <h3 class="venue-town-heading">${group.town}</h3>
+      <div class="venue-grid">${group.pubs.map(renderVenueCard).join("")}</div>
+    </section>
+  `).join("");
+  const comingSoonHtml = comingSoonPubs.length
+    ? `
+    <section class="venue-town-group venue-coming-soon-group" data-town-group="coming-soon" data-coming-soon="true">
+      <div class="venue-grid">${comingSoonPubs.map(renderVenueCard).join("")}</div>
+    </section>
+  `
+    : "";
+  $("pubList").innerHTML = `${townGroupsHtml}${comingSoonHtml}`;
 
   $("giftList").innerHTML = gifts.map(gift => `
     <button type="button" class="gift-card ${gift.id === selectedGift.id ? "selected" : ""}" data-gift="${gift.id}">
@@ -1275,8 +1332,14 @@ function filterPubList(query) {
     const pub = pubs.find(item => item.id === btn.dataset.pub);
     const visible = !term
       || pub.name.toLowerCase().includes(term)
-      || pub.town.toLowerCase().includes(term);
+      || String(pub.town || "").toLowerCase().includes(term);
     btn.classList.toggle("is-filtered", !visible);
+  });
+  document.querySelectorAll("[data-town-group]").forEach(group => {
+    const hasVisiblePub = [...group.querySelectorAll("[data-pub]")]
+      .some(btn => !btn.classList.contains("is-filtered"));
+    group.classList.toggle("is-filtered", !hasVisiblePub);
+    group.hidden = !hasVisiblePub;
   });
 }
 

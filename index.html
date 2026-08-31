@@ -4,8 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07120d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="PintDrop" />
   <title>PintDrop — Send a pint to their local</title>
-  <link rel="stylesheet" href="styles.css?v=20260827-bar-tab-used-once" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="images/apple-touch-icon.png" />
+  <link rel="stylesheet" href="styles.css?v=20260830-how-works-2x2b" />
 </head>
 <body>
   <div id="splashScreen" class="splash-screen" aria-hidden="false">
@@ -43,6 +48,37 @@
         </div>
       </div>
 
+      <section class="how-pintdrop-works" aria-labelledby="howPintDropWorksTitle">
+        <h2 id="howPintDropWorksTitle">How PintDrop works</h2>
+        <ol class="how-pintdrop-works-steps">
+          <li>
+            <div>
+              <strong>Pick their pub 🍺</strong>
+              <p>Choose the pub where you want them to enjoy their drink.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Pick their drink 🎁</strong>
+              <p>Choose a pint, cocktail, bar tab or whatever that pub offers.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Send the PintDrop 📱</strong>
+              <p>Add their name, mobile number and an optional personal message.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>They redeem at the bar ✅</strong>
+              <p>They receive their PintDrop by text and show their voucher at the pub.</p>
+            </div>
+          </li>
+        </ol>
+        <p class="how-pintdrop-works-tagline">Buy them a pint from anywhere in the world. They enjoy it at their local.</p>
+      </section>
+
       <div class="journey-progress" aria-label="Purchase progress">
         <div class="journey-step active" data-journey-step="1"><span>1</span><strong>Pub</strong></div>
         <div class="journey-line" data-journey-line="1"></div>
@@ -66,9 +102,9 @@
           </div>
           <div class="venue-search-wrap">
             <span class="venue-search-icon" aria-hidden="true">⌕</span>
-            <input type="search" id="pubSearch" class="venue-search" placeholder="Search pubs in Buncrana…" aria-label="Search pubs" />
+            <input type="search" id="pubSearch" class="venue-search" placeholder="Search pubs or towns" aria-label="Search pubs" />
           </div>
-          <div id="pubList" class="venue-grid"></div>
+          <div id="pubList" class="venue-town-list"></div>
           <p id="pubStepError" class="step-error hidden" role="alert">Please choose a participating pub to continue.</p>
           <button type="button" class="primary full mobile-continue" data-next-substep="drink">Continue to drinks</button>
         </section>
@@ -764,6 +800,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
   <script src="partner-auth-view.js?v=20260827-partner-auth-isolation"></script>
   <script src="supabase-config.js?v=20260827-partner-auth-isolation"></script>
-  <script src="app.js?v=20260827-partner-auth-isolation"></script>
+  <script src="app.js?v=20260830-how-pintdrop-works"></script>
 </body>
 </html>
