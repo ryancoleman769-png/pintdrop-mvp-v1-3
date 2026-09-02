@@ -125,6 +125,21 @@ function getPartnerAccessTokenFromRequest(req) {
     return authHeader.slice(7).trim();
   }
 
+  // Some preview hosting layers reserve or rewrite the Authorization header.
+  // Accept the same Supabase token from a dedicated header as a safe fallback.
+  let partnerToken = "";
+  if (typeof headers.get === "function") {
+    partnerToken = String(headers.get("x-pintdrop-partner-token") || "").trim();
+  }
+  if (!partnerToken) {
+    partnerToken = String(headers["x-pintdrop-partner-token"] || "").trim();
+  }
+
+  if (partnerToken.toLowerCase().startsWith("bearer ")) {
+    return partnerToken.slice(7).trim();
+  }
+  if (partnerToken) return partnerToken;
+
   return "";
 }
 
@@ -284,6 +299,14 @@ async function resolveAuthenticatedPartnerPub(req) {
   } catch (error) {
     console.warn("[stripe-connect] Partner profile lookup failed:", error.message);
     return null;
+  }
+
+  if (typeof profile === "string") {
+    try {
+      profile = JSON.parse(profile);
+    } catch {
+      return null;
+    }
   }
 
   const pubId = Number(profile?.pub_id);

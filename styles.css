@@ -3938,7 +3938,7 @@ body.partner-login-active main {
 .partner-traceability-summary span { display: block; min-height: 32px; color: var(--muted); font-size: .78rem; font-weight: 700; }
 .partner-traceability-summary strong { display: block; margin-top: 7px; font-size: 1.08rem; }
 .partner-traceability-table-wrap { overflow-x: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; }
-.partner-traceability-table { width: 100%; min-width: 840px; border-collapse: collapse; font-size: .84rem; }
+.partner-traceability-table { width: 100%; min-width: 1420px; border-collapse: collapse; font-size: .84rem; }
 .partner-traceability-table th, .partner-traceability-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,.07); text-align: left; white-space: nowrap; }
 .partner-traceability-table th { color: var(--muted); font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
 .partner-traceability-table tbody tr:last-child td { border-bottom: 0; }
@@ -3946,6 +3946,7 @@ body.partner-login-active main {
 .partner-trace-status { display: inline-block; padding: 5px 8px; border-radius: 999px; font-size: .72rem; font-weight: 800; }
 .partner-trace-status--redeemed { color: var(--green); background: rgba(106,203,69,.12); }
 .partner-trace-status--waiting { color: #ffd27d; background: rgba(255,190,75,.12); }
+.partner-traceability-scroll-note { display: none; margin: 10px 0 0; color: var(--muted); font-size: .78rem; }
 .partner-traceability-note { margin: 14px 0 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
 
 @media (max-width: 780px) {
@@ -3953,6 +3954,7 @@ body.partner-login-active main {
   .partner-traceability-head { gap: 14px; }
   .partner-traceability-actions { width: 100%; }
   .partner-export-btn { width: 100%; }
+  .partner-traceability-scroll-note { display: block; }
 }
 
 .partner-menu-save-btn {

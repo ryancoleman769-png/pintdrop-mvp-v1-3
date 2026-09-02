@@ -3065,7 +3065,11 @@ async function loadPartnerAccountingReport(period, { force = false } = {}) {
   try {
     const response = await fetch("/api/partner/accounting-report", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "X-PintDrop-Partner-Token": accessToken
+      },
       body: JSON.stringify({ period })
     });
     const data = await response.json();
@@ -3074,7 +3078,10 @@ async function loadPartnerAccountingReport(period, { force = false } = {}) {
     partnerAccountingReports.set(period, rows);
     return rows;
   } catch (error) {
-    partnerAccountingLoadError = String(error?.message || "Could not load payout reconciliation.");
+    const message = String(error?.message || "Could not load payout reconciliation.");
+    partnerAccountingLoadError = message === "Partner authentication required."
+      ? "Payout details need a quick refresh. Sales totals are unaffected."
+      : message;
     return [];
   }
 }
@@ -3167,7 +3174,10 @@ function renderPartnerTraceability(vouchers) {
       <td>${escapeTraceHtml(voucher.gift?.name || "Voucher")}</td>
       <td><span class="partner-trace-status partner-trace-status--${voucher.status === "redeemed" ? "redeemed" : "waiting"}">${traceabilityStatus(voucher)}</span></td>
       <td>${money(Number(voucher.gift?.price || 0))}</td>
+      <td>${money(Number(settlement.customerPaid || voucher.total || 0))}</td>
       <td>${money(Number(settlement.refundAmount || 0))}</td>
+      <td><span class="partner-trace-code">${escapeTraceHtml(settlement.paymentReference || "—")}</span></td>
+      <td><span class="partner-trace-code">${escapeTraceHtml(settlement.transferReference || "—")}</span></td>
       <td><span class="partner-trace-status partner-trace-status--${settlement.payoutStatus === "paid" ? "redeemed" : "waiting"}">${escapeTraceHtml(payoutStatusLabel(settlement.payoutStatus))}</span></td>
       <td>${escapeTraceHtml(settlement.payoutDate ? formatTraceDate(settlement.payoutDate) : "—")}</td>
       <td><span class="partner-trace-code">${escapeTraceHtml(settlement.payoutReference || "—")}</span></td>
