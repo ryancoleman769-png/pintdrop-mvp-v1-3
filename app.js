@@ -266,6 +266,8 @@ const PARTNER_AUTH_STALL_MESSAGE = "Sign-in stalled. Check your connection and t
 
 let partnerVouchers = null;
 let partnerVouchersLoadError = null;
+const partnerAccountingReports = new Map();
+let partnerAccountingLoadError = null;
 let publicVoucherDisplay = null;
 let partnerQrScanActive = false;
 let partnerQrScanHandling = false;
@@ -3041,6 +3043,78 @@ function computeTraceabilitySummary(rows) {
   }, { venueValue: 0, customerPaid: 0, fees: 0, redeemedValue: 0, redeemedCount: 0, waitingCount: 0 });
 }
 
+function computeSettlementSummary(rows) {
+  return rows.reduce((summary, row) => {
+    summary.refunds += Number(row.refundAmount || 0);
+    if (row.payoutStatus === "paid") summary.paidOut += Number(row.transferAmount || row.venueValue || 0);
+    summary.outstanding += Number(row.outstandingAmount || 0);
+    return summary;
+  }, { refunds: 0, paidOut: 0, outstanding: 0 });
+}
+
+async function loadPartnerAccountingReport(period, { force = false } = {}) {
+  if (!force && partnerAccountingReports.has(period)) return partnerAccountingReports.get(period);
+  partnerAccountingLoadError = null;
+  const auth = getPartnerAuthApi();
+  const session = partnerSession || (await auth?.getSession?.());
+  const accessToken = session?.access_token;
+  if (!accessToken) {
+    partnerAccountingLoadError = "Sign in again to load payout reconciliation.";
+    return [];
+  }
+  try {
+    const response = await fetch("/api/partner/accounting-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ period })
+    });
+    const data = await response.json();
+    if (!response.ok || !data?.ok) throw new Error(data?.error || "Could not load payout reconciliation.");
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+    partnerAccountingReports.set(period, rows);
+    return rows;
+  } catch (error) {
+    partnerAccountingLoadError = String(error?.message || "Could not load payout reconciliation.");
+    return [];
+  }
+}
+
+function settlementRowForVoucher(voucher, settlementRows) {
+  return settlementRows.find(row => row.saleReference === voucher.code) || {
+    saleReference: voucher.code,
+    itemSold: voucher.gift?.name || "Voucher",
+    saleDate: voucher.createdAt,
+    redemptionDate: voucher.redeemedAt,
+    voucherStatus: voucher.status,
+    venueValue: Number(voucher.gift?.price || 0),
+    customerPaid: Number(voucher.total || 0),
+    pintDropFee: Number(voucher.fee || 0),
+    stripeFee: null,
+    refundAmount: 0,
+    paymentReference: null,
+    transferReference: null,
+    transferAmount: 0,
+    payoutReference: null,
+    payoutDate: null,
+    payoutStatus: "loading",
+    outstandingAmount: Number(voucher.gift?.price || 0)
+  };
+}
+
+function payoutStatusLabel(value) {
+  const labels = {
+    paid: "Paid",
+    pending: "Pending",
+    in_transit: "In transit",
+    awaiting_payout: "Awaiting payout",
+    processing: "Processing",
+    review: "Review",
+    untracked: "Legacy / untracked",
+    loading: "Loading"
+  };
+  return labels[value] || "Outstanding";
+}
+
 function formatTraceDate(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -3061,8 +3135,11 @@ function escapeTraceHtml(value) {
 }
 
 function renderPartnerTraceability(vouchers) {
-  const rows = partnerTraceabilityRows(vouchers, partnerTraceabilityFilter);
-  const summary = computeTraceabilitySummary(rows);
+  const voucherRows = partnerTraceabilityRows(vouchers, partnerTraceabilityFilter);
+  const settlementRows = partnerAccountingReports.get(partnerTraceabilityFilter) || [];
+  const rows = voucherRows.map(voucher => ({ voucher, settlement: settlementRowForVoucher(voucher, settlementRows) }));
+  const summary = computeTraceabilitySummary(voucherRows);
+  const settlementSummary = computeSettlementSummary(rows.map(row => row.settlement));
 
   document.querySelectorAll("[data-partner-traceability-filter]").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.partnerTraceabilityFilter === partnerTraceabilityFilter);
@@ -3073,28 +3150,34 @@ function renderPartnerTraceability(vouchers) {
   $("partnerTraceFees").textContent = money(summary.fees);
   $("partnerTraceRedeemed").textContent = `${summary.redeemedCount} · ${money(summary.redeemedValue)}`;
   $("partnerTraceWaiting").textContent = String(summary.waitingCount);
+  $("partnerTraceRefunds").textContent = money(settlementSummary.refunds);
+  $("partnerTracePaidOut").textContent = money(settlementSummary.paidOut);
+  $("partnerTraceOutstanding").textContent = money(settlementSummary.outstanding);
 
   const errorEl = $("partnerTraceabilityError");
-  errorEl.textContent = partnerVouchersLoadError || "";
-  errorEl.classList.toggle("hidden", !partnerVouchersLoadError);
+  const reportError = partnerVouchersLoadError || partnerAccountingLoadError || "";
+  errorEl.textContent = reportError;
+  errorEl.classList.toggle("hidden", !reportError);
 
   const tbody = $("partnerTraceabilityRows");
-  tbody.innerHTML = rows.map(voucher => `
+  tbody.innerHTML = rows.map(({ voucher, settlement }) => `
     <tr>
       <td>${escapeTraceHtml(formatTraceDate(voucher.createdAt))}</td>
       <td><span class="partner-trace-code">${escapeTraceHtml(voucher.code)}</span></td>
       <td>${escapeTraceHtml(voucher.gift?.name || "Voucher")}</td>
       <td><span class="partner-trace-status partner-trace-status--${voucher.status === "redeemed" ? "redeemed" : "waiting"}">${traceabilityStatus(voucher)}</span></td>
       <td>${money(Number(voucher.gift?.price || 0))}</td>
-      <td>${money(Number(voucher.total || 0))}</td>
-      <td>${money(Number(voucher.fee || 0))}</td>
-      <td>${escapeTraceHtml(voucher.redeemedAt ? formatTraceDate(voucher.redeemedAt) : "—")}</td>
+      <td>${money(Number(settlement.refundAmount || 0))}</td>
+      <td><span class="partner-trace-status partner-trace-status--${settlement.payoutStatus === "paid" ? "redeemed" : "waiting"}">${escapeTraceHtml(payoutStatusLabel(settlement.payoutStatus))}</span></td>
+      <td>${escapeTraceHtml(settlement.payoutDate ? formatTraceDate(settlement.payoutDate) : "—")}</td>
+      <td><span class="partner-trace-code">${escapeTraceHtml(settlement.payoutReference || "—")}</span></td>
     </tr>
   `).join("");
 
   $("partnerTraceabilityEmpty").classList.toggle("hidden", rows.length > 0 || Boolean(partnerVouchersLoadError));
   tbody.closest(".partner-traceability-table-wrap").classList.toggle("hidden", rows.length === 0);
   $("partnerExportCsv").disabled = rows.length === 0 || Boolean(partnerVouchersLoadError);
+  $("partnerPrintStatement").disabled = rows.length === 0 || Boolean(partnerVouchersLoadError);
 }
 
 function safeCsvCell(value) {
@@ -3104,14 +3187,18 @@ function safeCsvCell(value) {
 }
 
 function exportPartnerTraceabilityCsv() {
-  const rows = partnerTraceabilityRows(getPartnerVouchers(), partnerTraceabilityFilter);
-  if (!rows.length) return;
-  const headings = ["Sale date", "Sale reference", "Venue", "Item sold", "Status", "Venue value EUR", "Customer paid EUR", "PintDrop fee EUR", "Redemption date", "Recipient", "Sender"];
-  const body = rows.map(voucher => [
-    formatTraceDate(voucher.createdAt), voucher.code, voucher.pub?.name || partnerProfile?.pub_name || "", voucher.gift?.name || "Voucher",
-    traceabilityStatus(voucher), Number(voucher.gift?.price || 0).toFixed(2), Number(voucher.total || 0).toFixed(2),
-    Number(voucher.fee || 0).toFixed(2), voucher.redeemedAt ? formatTraceDate(voucher.redeemedAt) : "", voucher.recipient || "", voucher.sender || ""
-  ]);
+  const vouchers = partnerTraceabilityRows(getPartnerVouchers(), partnerTraceabilityFilter);
+  if (!vouchers.length) return;
+  const settlements = partnerAccountingReports.get(partnerTraceabilityFilter) || [];
+  const headings = ["Sale date", "Sale reference", "Venue", "Item sold", "Voucher status", "Venue value EUR", "Customer paid EUR", "PintDrop fee EUR", "Stripe fee EUR", "Refund EUR", "Payment reference", "Transfer reference", "Payout status", "Payout date", "Payout reference", "Outstanding EUR", "Reconciliation note"];
+  const body = vouchers.map(voucher => {
+    const row = settlementRowForVoucher(voucher, settlements);
+    return [formatTraceDate(voucher.createdAt), voucher.code, voucher.pub?.name || partnerProfile?.pub_name || "", voucher.gift?.name || "Voucher",
+      traceabilityStatus(voucher), Number(row.venueValue || 0).toFixed(2), Number(row.customerPaid || 0).toFixed(2),
+      Number(row.pintDropFee || 0).toFixed(2), row.stripeFee == null ? "" : Number(row.stripeFee).toFixed(2),
+      Number(row.refundAmount || 0).toFixed(2), row.paymentReference || "", row.transferReference || "", payoutStatusLabel(row.payoutStatus),
+      row.payoutDate ? formatTraceDate(row.payoutDate) : "", row.payoutReference || "", Number(row.outstandingAmount || 0).toFixed(2), row.reconciliationNote || ""];
+  });
   const csv = `\uFEFF${[headings, ...body].map(row => row.map(safeCsvCell).join(",")).join("\r\n")}`;
   const blobUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
@@ -3121,6 +3208,20 @@ function exportPartnerTraceabilityCsv() {
   link.click();
   link.remove();
   URL.revokeObjectURL(blobUrl);
+}
+
+function printPartnerAccountantStatement() {
+  const vouchers = partnerTraceabilityRows(getPartnerVouchers(), partnerTraceabilityFilter);
+  if (!vouchers.length) return;
+  const settlements = partnerAccountingReports.get(partnerTraceabilityFilter) || [];
+  const rows = vouchers.map(voucher => settlementRowForVoucher(voucher, settlements));
+  const totals = computeTraceabilitySummary(vouchers);
+  const settlementTotals = computeSettlementSummary(rows);
+  const venue = escapeTraceHtml(partnerProfile?.pub_name || vouchers[0]?.pub?.name || "PintDrop venue");
+  const popup = window.open("", "_blank");
+  if (!popup) return;
+  popup.document.write(`<!doctype html><html><head><title>PintDrop accountant statement</title><style>body{font:14px Arial,sans-serif;color:#17211b;margin:32px}h1{margin-bottom:4px}.meta{color:#607067}.totals{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:24px 0}.totals div{border:1px solid #ccd7d0;padding:12px;border-radius:8px}.totals span{display:block;color:#607067;font-size:12px}.totals strong{display:block;margin-top:5px;font-size:17px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border-bottom:1px solid #dce4df;padding:8px;text-align:left}th{background:#eef3f0}.foot{margin-top:20px;color:#607067;font-size:11px}@media print{body{margin:12mm}}</style></head><body><h1>${venue}</h1><p class="meta">PintDrop accountant statement · ${escapeTraceHtml(partnerTraceabilityFilter)} · Generated ${escapeTraceHtml(formatTraceDate(new Date()))}</p><section class="totals"><div><span>Venue value sold</span><strong>${money(totals.venueValue)}</strong></div><div><span>Refunds</span><strong>${money(settlementTotals.refunds)}</strong></div><div><span>Paid to venue</span><strong>${money(settlementTotals.paidOut)}</strong></div><div><span>Outstanding</span><strong>${money(settlementTotals.outstanding)}</strong></div></section><table><thead><tr><th>Date</th><th>Sale ref</th><th>Item</th><th>Venue value</th><th>Refund</th><th>Payout</th><th>Payout ref</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeTraceHtml(formatTraceDate(row.saleDate))}</td><td>${escapeTraceHtml(row.saleReference)}</td><td>${escapeTraceHtml(row.itemSold)}</td><td>${money(row.venueValue)}</td><td>${money(row.refundAmount)}</td><td>${escapeTraceHtml(payoutStatusLabel(row.payoutStatus))}</td><td>${escapeTraceHtml(row.payoutReference || "—")}</td></tr>`).join("")}</tbody></table><p class="foot">Customer and recipient names are intentionally excluded. Match payouts using the Stripe payout reference.</p><script>window.onload=()=>window.print()<\/script></body></html>`);
+  popup.document.close();
 }
 
 function getPartnerAuthApi() {
@@ -3291,6 +3392,8 @@ function clearPartnerSessionState() {
   partnerMenuLoading = false;
   partnerVouchers = null;
   partnerVouchersLoadError = null;
+  partnerAccountingReports.clear();
+  partnerAccountingLoadError = null;
 }
 
 function isEmailNotConfirmedError(error) {
@@ -4253,6 +4356,7 @@ async function renderPartner() {
 
   await loadPartnerMenu();
   await loadPartnerVouchers();
+  await loadPartnerAccountingReport(partnerTraceabilityFilter);
   const vouchers = getPartnerVouchers();
 
   document.querySelectorAll("[data-partner-history-filter]").forEach(btn => {
@@ -4295,6 +4399,7 @@ function setPartnerHistoryFilter(period) {
 function setPartnerTraceabilityFilter(period) {
   partnerTraceabilityFilter = period;
   renderPartnerTraceability(getPartnerVouchers());
+  void loadPartnerAccountingReport(period).then(() => renderPartnerTraceability(getPartnerVouchers()));
 }
 
 function voucherRow(voucher, waiting = false) {
@@ -5074,6 +5179,7 @@ document.querySelectorAll("[data-partner-traceability-filter]").forEach(btn => {
 });
 
 $("partnerExportCsv")?.addEventListener("click", exportPartnerTraceabilityCsv);
+$("partnerPrintStatement")?.addEventListener("click", printPartnerAccountantStatement);
 
 function dismissSplash() {
   const splash = $("splashScreen");

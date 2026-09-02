@@ -3925,6 +3925,8 @@ body.partner-login-active main {
   cursor: pointer;
 }
 .partner-export-btn:disabled { opacity: .45; cursor: not-allowed; }
+.partner-traceability-actions { display: flex; gap: 8px; }
+.partner-export-btn--secondary { color: var(--text); border-color: rgba(255,255,255,.18); background: rgba(255,255,255,.05); }
 .partner-traceability-filters { margin: 18px 0; }
 .partner-traceability-summary {
   display: grid;
@@ -3949,6 +3951,7 @@ body.partner-login-active main {
 @media (max-width: 780px) {
   .partner-traceability-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .partner-traceability-head { gap: 14px; }
+  .partner-traceability-actions { width: 100%; }
   .partner-export-btn { width: 100%; }
 }
 

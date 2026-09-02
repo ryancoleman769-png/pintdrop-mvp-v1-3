@@ -658,7 +658,10 @@
             <h2 id="partnerTraceabilityTitle">Sales &amp; accountant records</h2>
             <p class="partner-traceability-lead">A traceable record of what was sold, redeemed and owed to your venue.</p>
           </div>
-          <button id="partnerExportCsv" type="button" class="partner-export-btn">Download CSV</button>
+          <div class="partner-traceability-actions">
+            <button id="partnerPrintStatement" type="button" class="partner-export-btn partner-export-btn--secondary">Print / PDF</button>
+            <button id="partnerExportCsv" type="button" class="partner-export-btn">Download CSV</button>
+          </div>
         </div>
         <div class="partner-filters partner-traceability-filters" role="tablist" aria-label="Filter accountant records">
           <button type="button" class="partner-filter active" data-partner-traceability-filter="today">Today</button>
@@ -672,12 +675,15 @@
           <article><span>PintDrop fees</span><strong id="partnerTraceFees">€0.00</strong></article>
           <article><span>Redeemed</span><strong id="partnerTraceRedeemed">0</strong></article>
           <article><span>Awaiting redemption</span><strong id="partnerTraceWaiting">0</strong></article>
+          <article><span>Refunds</span><strong id="partnerTraceRefunds">€0.00</strong></article>
+          <article><span>Paid to venue</span><strong id="partnerTracePaidOut">€0.00</strong></article>
+          <article><span>Still outstanding</span><strong id="partnerTraceOutstanding">€0.00</strong></article>
         </div>
         <p id="partnerTraceabilityError" class="partner-menu-message partner-menu-message--error hidden" role="alert"></p>
         <div class="partner-traceability-table-wrap">
           <table class="partner-traceability-table">
             <thead>
-              <tr><th>Sale date</th><th>Reference</th><th>Item sold</th><th>Status</th><th>Venue value</th><th>Customer paid</th><th>Fee</th><th>Redeemed</th></tr>
+              <tr><th>Sale date</th><th>Sale reference</th><th>Item sold</th><th>Voucher</th><th>Venue value</th><th>Refund</th><th>Payout status</th><th>Payout date</th><th>Payout reference</th></tr>
             </thead>
             <tbody id="partnerTraceabilityRows"></tbody>
           </table>
