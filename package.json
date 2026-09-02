@@ -1,4 +1,10 @@
 {
+  "private": true,
+  "scripts": {
+    "test:assisted-onboarding": "node scripts/test-assisted-onboarding-unit.cjs",
+    "test:assisted-onboarding-ui": "node scripts/test-assisted-onboarding-ui.cjs",
+    "test:partner-traceability": "node scripts/test-partner-traceability.cjs"
+  },
   "dependencies": {
     "playwright": "^1.62.1",
     "stripe": "^17.7.0"

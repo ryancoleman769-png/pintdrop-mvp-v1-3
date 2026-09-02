@@ -652,6 +652,40 @@
         <div id="redeemResult"></div>
       </section>
 
+      <section class="card partner-traceability-card" aria-labelledby="partnerTraceabilityTitle">
+        <div class="partner-section-head partner-traceability-head">
+          <div>
+            <h2 id="partnerTraceabilityTitle">Sales &amp; accountant records</h2>
+            <p class="partner-traceability-lead">A traceable record of what was sold, redeemed and owed to your venue.</p>
+          </div>
+          <button id="partnerExportCsv" type="button" class="partner-export-btn">Download CSV</button>
+        </div>
+        <div class="partner-filters partner-traceability-filters" role="tablist" aria-label="Filter accountant records">
+          <button type="button" class="partner-filter active" data-partner-traceability-filter="today">Today</button>
+          <button type="button" class="partner-filter" data-partner-traceability-filter="week">This week</button>
+          <button type="button" class="partner-filter" data-partner-traceability-filter="month">This month</button>
+          <button type="button" class="partner-filter" data-partner-traceability-filter="all">All</button>
+        </div>
+        <div class="partner-traceability-summary" aria-live="polite">
+          <article><span>Venue value sold</span><strong id="partnerTraceVenueValue">€0.00</strong></article>
+          <article><span>Customer paid</span><strong id="partnerTraceCustomerPaid">€0.00</strong></article>
+          <article><span>PintDrop fees</span><strong id="partnerTraceFees">€0.00</strong></article>
+          <article><span>Redeemed</span><strong id="partnerTraceRedeemed">0</strong></article>
+          <article><span>Awaiting redemption</span><strong id="partnerTraceWaiting">0</strong></article>
+        </div>
+        <p id="partnerTraceabilityError" class="partner-menu-message partner-menu-message--error hidden" role="alert"></p>
+        <div class="partner-traceability-table-wrap">
+          <table class="partner-traceability-table">
+            <thead>
+              <tr><th>Sale date</th><th>Reference</th><th>Item sold</th><th>Status</th><th>Venue value</th><th>Customer paid</th><th>Fee</th><th>Redeemed</th></tr>
+            </thead>
+            <tbody id="partnerTraceabilityRows"></tbody>
+          </table>
+        </div>
+        <p id="partnerTraceabilityEmpty" class="note partner-history-empty hidden">No sales for this period.</p>
+        <p class="partner-traceability-note">For Bar Tabs, the sale records the voucher value. A specific drink is only known if staff record it when the voucher is redeemed.</p>
+      </section>
+
       <section class="card partner-activity-card partner-pilot-history">
         <div class="partner-section-head">
           <h2>Recent redemptions</h2>
@@ -800,6 +834,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
   <script src="partner-auth-view.js?v=20260827-partner-auth-isolation"></script>
   <script src="supabase-config.js?v=20260827-partner-auth-isolation"></script>
-  <script src="app.js?v=20260830-how-pintdrop-works"></script>
+  <script src="app.js?v=20260902-partner-traceability"></script>
 </body>
 </html>

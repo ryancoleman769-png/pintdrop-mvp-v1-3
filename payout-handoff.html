@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>PintDrop — Complete Payout Setup</title>
+  <link rel="icon" href="images/pintdrop-mark.png" />
+  <link rel="stylesheet" href="assisted-onboarding.css?v=20260901" />
+</head>
+<body>
+  <header class="setup-header setup-header--centered">
+    <a class="setup-brand" href="/" aria-label="PintDrop home">
+      <img src="images/pintdrop-logo.png" alt="PintDrop" />
+    </a>
+  </header>
+
+  <main class="setup-shell handoff-shell">
+    <section id="handoffLoading" class="setup-card handoff-card">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <h1>Checking your secure link…</h1>
+      <p class="lead">This will only take a moment.</p>
+    </section>
+
+    <section id="handoffInvalid" class="setup-card handoff-card hidden">
+      <div class="status-mark status-mark--error">!</div>
+      <div class="card-kicker">Link unavailable</div>
+      <h1>Ask PintDrop for a new setup link</h1>
+      <p id="handoffInvalidMessage" class="lead">This secure link is invalid or has expired.</p>
+    </section>
+
+    <section id="handoffReady" class="setup-card handoff-card hidden">
+      <span class="preview-pill preview-pill--inline"><span></span> Safe test preview</span>
+      <div class="card-kicker">PintDrop pub partner</div>
+      <h1>Complete your payout setup</h1>
+      <p class="lead"><strong id="handoffPubName">Your pub</strong><span id="handoffPubLocation"></span></p>
+
+      <div class="handoff-explainer">
+        <div class="shield-mark" aria-hidden="true">✓</div>
+        <div>
+          <h2>Most of the form is already done</h2>
+          <p>PintDrop has securely supplied the details provided by your pub. Stripe will ask you to confirm them, fill any gaps, complete any ID check, and accept its terms.</p>
+        </div>
+      </div>
+
+      <p id="handoffStatusText" class="status-line">Ready to continue securely with Stripe.</p>
+      <p id="handoffActionError" class="form-message form-message--error hidden" role="alert"></p>
+      <button id="continueToStripeButton" class="setup-button setup-button--primary setup-button--large" type="button">
+        Continue securely to Stripe
+      </button>
+      <p class="stripe-note">You’ll leave PintDrop briefly and return here when finished. This Preview uses Stripe test mode and cannot move real money.</p>
+    </section>
+
+    <section id="handoffComplete" class="setup-card handoff-card hidden">
+      <div class="status-mark">✓</div>
+      <div class="card-kicker">Test completed</div>
+      <h1>Payout setup submitted</h1>
+      <p class="lead"><strong id="completePubName">Your pub</strong> has completed the Stripe test onboarding flow.</p>
+      <div class="preview-notice"><strong>Preview only:</strong> no live PintDrop pub or bank payout was changed.</div>
+    </section>
+  </main>
+
+  <script src="payout-handoff.js?v=20260901"></script>
+</body>
+</html>

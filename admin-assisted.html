@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>PintDrop — Assisted Pub Setup Preview</title>
+  <link rel="icon" href="images/pintdrop-mark.png" />
+  <link rel="stylesheet" href="assisted-onboarding.css?v=20260901" />
+</head>
+<body>
+  <header class="setup-header">
+    <a class="setup-brand" href="/" aria-label="PintDrop home">
+      <img src="images/pintdrop-logo.png" alt="PintDrop" />
+    </a>
+    <span class="preview-pill"><span></span> Preview · Stripe test mode</span>
+  </header>
+
+  <main class="setup-shell setup-shell--wide">
+    <section id="adminLoginCard" class="setup-card login-card hidden">
+      <div class="card-kicker">PintDrop admin</div>
+      <h1>Assisted pub setup</h1>
+      <p class="lead">Sign in to prepare a pub’s Stripe payout setup from one simple form.</p>
+      <form id="adminLoginForm" class="stack" novalidate>
+        <label class="setup-field">
+          <span>Admin password</span>
+          <input id="adminPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <p id="adminLoginError" class="form-message form-message--error hidden" role="alert"></p>
+        <button id="adminLoginButton" class="setup-button setup-button--primary" type="submit">Open assisted setup</button>
+      </form>
+    </section>
+
+    <section id="adminWorkspace" class="hidden">
+      <div class="workspace-heading">
+        <div>
+          <div class="card-kicker">PintDrop admin</div>
+          <h1>Set up a pub for payouts</h1>
+          <p class="lead">You fill in what you know. The pub opens one PintDrop link and confirms the rest securely with Stripe.</p>
+        </div>
+        <button id="adminLogoutButton" class="text-button" type="button">Log out</button>
+      </div>
+
+      <div class="preview-notice" role="status">
+        <strong>Safe Preview:</strong> this creates a Stripe <strong>test</strong> account only. It does not change the live pub, live payments, or the production database.
+      </div>
+
+      <div class="workspace-grid">
+        <form id="assistedSetupForm" class="setup-card assisted-form" novalidate>
+          <section class="form-section">
+            <div class="section-number">1</div>
+            <div class="section-content">
+              <h2>Choose the pub</h2>
+              <label class="setup-field">
+                <span>PintDrop pub</span>
+                <select id="pubId" name="pubId" required>
+                  <option value="">Loading pubs…</option>
+                </select>
+              </label>
+              <p id="pubHint" class="field-help">The list is read-only and comes from the current PintDrop pubs.</p>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="section-number">2</div>
+            <div class="section-content">
+              <div class="section-title-row">
+                <h2>Legal and contact details</h2>
+                <button id="fillTestDetails" class="small-button" type="button">Fill test details</button>
+              </div>
+              <div class="field-grid field-grid--two">
+                <label class="setup-field">
+                  <span>Business type</span>
+                  <select id="businessType" name="businessType">
+                    <option value="individual">Sole trader / individual</option>
+                    <option value="company">Limited company</option>
+                  </select>
+                </label>
+                <label id="legalNameField" class="setup-field hidden">
+                  <span>Legal company name</span>
+                  <input id="legalName" name="legalName" type="text" maxlength="160" />
+                </label>
+                <label class="setup-field">
+                  <span>Representative first name</span>
+                  <input id="representativeFirstName" name="representativeFirstName" type="text" maxlength="80" required />
+                </label>
+                <label class="setup-field">
+                  <span>Representative last name</span>
+                  <input id="representativeLastName" name="representativeLastName" type="text" maxlength="80" required />
+                </label>
+                <label class="setup-field">
+                  <span>Date of birth</span>
+                  <input id="representativeDob" name="representativeDob" type="date" required />
+                </label>
+                <label class="setup-field">
+                  <span>Business email</span>
+                  <input id="businessEmail" name="email" type="email" autocomplete="email" required />
+                </label>
+                <label class="setup-field">
+                  <span>Contact phone</span>
+                  <input id="businessPhone" name="phone" type="tel" autocomplete="tel" placeholder="087 123 4567" required />
+                </label>
+              </div>
+              <div class="field-grid field-grid--two">
+                <label class="setup-field field-span-two">
+                  <span>Business address</span>
+                  <input id="addressLine1" name="addressLine1" type="text" autocomplete="address-line1" required />
+                </label>
+                <label class="setup-field field-span-two">
+                  <span>Address line 2 <em>Optional</em></span>
+                  <input id="addressLine2" name="addressLine2" type="text" autocomplete="address-line2" />
+                </label>
+                <label class="setup-field">
+                  <span>Town or city</span>
+                  <input id="businessCity" name="city" type="text" autocomplete="address-level2" required />
+                </label>
+                <label class="setup-field">
+                  <span>Eircode</span>
+                  <input id="postalCode" name="postalCode" type="text" autocomplete="postal-code" placeholder="F93 X123" maxlength="8" required />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="section-number">3</div>
+            <div class="section-content">
+              <h2>Payout account</h2>
+              <div class="field-grid field-grid--two">
+                <label class="setup-field">
+                  <span>Bank account holder name</span>
+                  <input id="accountHolderName" name="accountHolderName" type="text" autocomplete="off" required />
+                </label>
+                <label class="setup-field secure-field">
+                  <span>Irish IBAN</span>
+                  <input id="iban" name="iban" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="IE00 XXXX 0000 0000 0000 00" maxlength="27" required />
+                </label>
+              </div>
+              <div class="privacy-note">
+                <span aria-hidden="true">🔒</span>
+                <p><strong>The IBAN is not saved by PintDrop.</strong> It is sent directly to Stripe over the secure request and removed from this form after setup.</p>
+              </div>
+            </div>
+          </section>
+
+          <p id="assistedSetupError" class="form-message form-message--error hidden" role="alert"></p>
+          <button id="assistedSetupButton" class="setup-button setup-button--primary setup-button--large" type="submit">
+            Prepare secure pub handoff
+          </button>
+        </form>
+
+        <aside class="result-column">
+          <section class="setup-card checklist-card">
+            <h2>What the pub will do</h2>
+            <ol class="handoff-steps">
+              <li><span>1</span><p>Open the PintDrop link you send them.</p></li>
+              <li><span>2</span><p>Confirm the details already filled in.</p></li>
+              <li><span>3</span><p>Complete any ID check and accept Stripe’s terms.</p></li>
+            </ol>
+            <p class="field-help">They never need your admin password and you never accept Stripe’s terms for them.</p>
+          </section>
+
+          <section id="handoffResult" class="setup-card result-card hidden" aria-live="polite">
+            <div class="success-mark">✓</div>
+            <div class="card-kicker">Ready to send</div>
+            <h2 id="handoffPubName">Pub setup prepared</h2>
+            <p id="handoffSummary" class="lead lead--small"></p>
+            <label class="setup-field">
+              <span>Secure PintDrop handoff link</span>
+              <textarea id="handoffUrl" rows="4" readonly></textarea>
+            </label>
+            <div class="result-actions">
+              <button id="copyHandoffButton" class="setup-button setup-button--primary" type="button">Copy link</button>
+              <button id="shareHandoffButton" class="setup-button setup-button--secondary hidden" type="button">Share link</button>
+            </div>
+            <a id="openHandoffLink" class="open-link" href="#" target="_blank" rel="noopener">Open the pub view to test it →</a>
+            <p id="handoffWarning" class="form-message form-message--warning hidden"></p>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script src="admin-assisted.js?v=20260901"></script>
+</body>
+</html>

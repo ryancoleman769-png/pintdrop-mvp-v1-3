@@ -3905,6 +3905,53 @@ body.partner-login-active main {
   color: var(--green);
 }
 
+.partner-traceability-card {
+  margin-bottom: 20px;
+  padding: 20px 16px;
+}
+
+.partner-traceability-head { align-items: flex-start; }
+.partner-traceability-lead { margin: 6px 0 0; color: var(--muted); line-height: 1.45; }
+.partner-export-btn {
+  flex-shrink: 0;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(106, 203, 69, 0.42);
+  border-radius: 10px;
+  background: rgba(106, 203, 69, 0.1);
+  color: var(--green);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.partner-export-btn:disabled { opacity: .45; cursor: not-allowed; }
+.partner-traceability-filters { margin: 18px 0; }
+.partner-traceability-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.partner-traceability-summary article { padding: 14px; border-radius: 12px; background: rgba(255,255,255,.045); }
+.partner-traceability-summary span { display: block; min-height: 32px; color: var(--muted); font-size: .78rem; font-weight: 700; }
+.partner-traceability-summary strong { display: block; margin-top: 7px; font-size: 1.08rem; }
+.partner-traceability-table-wrap { overflow-x: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; }
+.partner-traceability-table { width: 100%; min-width: 840px; border-collapse: collapse; font-size: .84rem; }
+.partner-traceability-table th, .partner-traceability-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,.07); text-align: left; white-space: nowrap; }
+.partner-traceability-table th { color: var(--muted); font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
+.partner-traceability-table tbody tr:last-child td { border-bottom: 0; }
+.partner-trace-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--green); font-weight: 800; }
+.partner-trace-status { display: inline-block; padding: 5px 8px; border-radius: 999px; font-size: .72rem; font-weight: 800; }
+.partner-trace-status--redeemed { color: var(--green); background: rgba(106,203,69,.12); }
+.partner-trace-status--waiting { color: #ffd27d; background: rgba(255,190,75,.12); }
+.partner-traceability-note { margin: 14px 0 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
+
+@media (max-width: 780px) {
+  .partner-traceability-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .partner-traceability-head { gap: 14px; }
+  .partner-export-btn { width: 100%; }
+}
+
 .partner-menu-save-btn {
   width: 100%;
   min-height: 52px;

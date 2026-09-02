@@ -246,6 +246,7 @@ let pendingBarTabRedeemAmount = null;
 let redemptionJustConfirmed = false;
 let partnerActivityFilter = "today";
 let partnerHistoryFilter = "today";
+let partnerTraceabilityFilter = "today";
 
 const PARTNER_PUB_ID = "oflahertys";
 const PARTNER_SUPABASE_PUB_ID = 8;
@@ -3006,6 +3007,122 @@ function computePeriodSummary(vouchers, period) {
   };
 }
 
+function voucherSoldInPeriod(voucher, period) {
+  if (!voucher?.createdAt) return false;
+  if (period === "today") return isToday(voucher.createdAt);
+  if (period === "week") return isThisWeek(voucher.createdAt);
+  if (period === "month") return isThisMonth(voucher.createdAt);
+  return true;
+}
+
+function partnerTraceabilityRows(vouchers, period) {
+  return vouchers
+    .filter(voucher => voucherSoldInPeriod(voucher, period))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function redeemedVenueValue(voucher) {
+  if (isBarTabVoucher(voucher)) {
+    const amount = Number(voucher.barTab?.totalRedeemed);
+    if (Number.isFinite(amount)) return amount;
+  }
+  return voucher.status === "redeemed" ? Number(voucher.gift?.price || 0) : 0;
+}
+
+function computeTraceabilitySummary(rows) {
+  return rows.reduce((summary, voucher) => {
+    summary.venueValue += Number(voucher.gift?.price || 0);
+    summary.customerPaid += Number(voucher.total || 0);
+    summary.fees += Number(voucher.fee || 0);
+    summary.redeemedValue += redeemedVenueValue(voucher);
+    if (voucher.status === "redeemed") summary.redeemedCount += 1;
+    else summary.waitingCount += 1;
+    return summary;
+  }, { venueValue: 0, customerPaid: 0, fees: 0, redeemedValue: 0, redeemedCount: 0, waitingCount: 0 });
+}
+
+function formatTraceDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-IE", { dateStyle: "short", timeStyle: "short" });
+}
+
+function traceabilityStatus(voucher) {
+  if (voucher.status === "redeemed") return "Redeemed";
+  if (redeemedVenueValue(voucher) > 0) return "Part redeemed";
+  return "Awaiting redemption";
+}
+
+function escapeTraceHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[character]);
+}
+
+function renderPartnerTraceability(vouchers) {
+  const rows = partnerTraceabilityRows(vouchers, partnerTraceabilityFilter);
+  const summary = computeTraceabilitySummary(rows);
+
+  document.querySelectorAll("[data-partner-traceability-filter]").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.partnerTraceabilityFilter === partnerTraceabilityFilter);
+  });
+
+  $("partnerTraceVenueValue").textContent = money(summary.venueValue);
+  $("partnerTraceCustomerPaid").textContent = money(summary.customerPaid);
+  $("partnerTraceFees").textContent = money(summary.fees);
+  $("partnerTraceRedeemed").textContent = `${summary.redeemedCount} · ${money(summary.redeemedValue)}`;
+  $("partnerTraceWaiting").textContent = String(summary.waitingCount);
+
+  const errorEl = $("partnerTraceabilityError");
+  errorEl.textContent = partnerVouchersLoadError || "";
+  errorEl.classList.toggle("hidden", !partnerVouchersLoadError);
+
+  const tbody = $("partnerTraceabilityRows");
+  tbody.innerHTML = rows.map(voucher => `
+    <tr>
+      <td>${escapeTraceHtml(formatTraceDate(voucher.createdAt))}</td>
+      <td><span class="partner-trace-code">${escapeTraceHtml(voucher.code)}</span></td>
+      <td>${escapeTraceHtml(voucher.gift?.name || "Voucher")}</td>
+      <td><span class="partner-trace-status partner-trace-status--${voucher.status === "redeemed" ? "redeemed" : "waiting"}">${traceabilityStatus(voucher)}</span></td>
+      <td>${money(Number(voucher.gift?.price || 0))}</td>
+      <td>${money(Number(voucher.total || 0))}</td>
+      <td>${money(Number(voucher.fee || 0))}</td>
+      <td>${escapeTraceHtml(voucher.redeemedAt ? formatTraceDate(voucher.redeemedAt) : "—")}</td>
+    </tr>
+  `).join("");
+
+  $("partnerTraceabilityEmpty").classList.toggle("hidden", rows.length > 0 || Boolean(partnerVouchersLoadError));
+  tbody.closest(".partner-traceability-table-wrap").classList.toggle("hidden", rows.length === 0);
+  $("partnerExportCsv").disabled = rows.length === 0 || Boolean(partnerVouchersLoadError);
+}
+
+function safeCsvCell(value) {
+  let text = String(value ?? "");
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportPartnerTraceabilityCsv() {
+  const rows = partnerTraceabilityRows(getPartnerVouchers(), partnerTraceabilityFilter);
+  if (!rows.length) return;
+  const headings = ["Sale date", "Sale reference", "Venue", "Item sold", "Status", "Venue value EUR", "Customer paid EUR", "PintDrop fee EUR", "Redemption date", "Recipient", "Sender"];
+  const body = rows.map(voucher => [
+    formatTraceDate(voucher.createdAt), voucher.code, voucher.pub?.name || partnerProfile?.pub_name || "", voucher.gift?.name || "Voucher",
+    traceabilityStatus(voucher), Number(voucher.gift?.price || 0).toFixed(2), Number(voucher.total || 0).toFixed(2),
+    Number(voucher.fee || 0).toFixed(2), voucher.redeemedAt ? formatTraceDate(voucher.redeemedAt) : "", voucher.recipient || "", voucher.sender || ""
+  ]);
+  const csv = `\uFEFF${[headings, ...body].map(row => row.map(safeCsvCell).join(",")).join("\r\n")}`;
+  const blobUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = `pintdrop-accountant-${partnerTraceabilityFilter}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
 function getPartnerAuthApi() {
   return window.PintDropSupabase?.PartnerAuth || null;
 }
@@ -4164,6 +4281,8 @@ async function renderPartner() {
       ? activity.map(voucher => partnerRedemptionItem(voucher)).join("")
       : `<p class="note partner-history-empty">No redemptions for this period.</p>`);
 
+  renderPartnerTraceability(vouchers);
+
   void refreshPartnerPayoutStatus();
 }
 
@@ -4171,6 +4290,11 @@ function setPartnerHistoryFilter(period) {
   partnerHistoryFilter = period;
   partnerActivityFilter = period;
   void renderPartner();
+}
+
+function setPartnerTraceabilityFilter(period) {
+  partnerTraceabilityFilter = period;
+  renderPartnerTraceability(getPartnerVouchers());
 }
 
 function voucherRow(voucher, waiting = false) {
@@ -4944,6 +5068,12 @@ $("partnerMenuForm")?.addEventListener("submit", (event) => {
 document.querySelectorAll("[data-partner-history-filter]").forEach(btn => {
   btn.addEventListener("click", () => setPartnerHistoryFilter(btn.dataset.partnerHistoryFilter));
 });
+
+document.querySelectorAll("[data-partner-traceability-filter]").forEach(btn => {
+  btn.addEventListener("click", () => setPartnerTraceabilityFilter(btn.dataset.partnerTraceabilityFilter));
+});
+
+$("partnerExportCsv")?.addEventListener("click", exportPartnerTraceabilityCsv);
 
 function dismissSplash() {
   const splash = $("splashScreen");
