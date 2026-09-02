@@ -112,6 +112,10 @@ async function reconcileVoucher(stripe, voucher, payoutMap) {
     const transferAmount = Number(transfer?.amount || 0) / 100;
     const reversedAmount = Number(transfer?.amount_reversed || 0) / 100;
     const settledAmount = Math.max(0, transferAmount - reversedAmount);
+    // Destination-charge transfers can show the gross customer payment because
+    // Stripe returns PintDrop's application fee separately. Accountant totals
+    // must use the venue's agreed drink value, never the gross transfer amount.
+    const venueAmountDue = Math.max(0, base.venueValue - Math.min(base.venueValue, reversedAmount));
 
     return {
       ...base,
@@ -125,7 +129,7 @@ async function reconcileVoucher(stripe, voucher, payoutMap) {
       payoutReference: payout?.id || null,
       payoutDate: payout?.arrivalDate || null,
       payoutStatus: payout?.status || (transferId ? "awaiting_payout" : "processing"),
-      outstandingAmount: payout?.status === "paid" ? 0 : settledAmount || base.venueValue,
+      outstandingAmount: payout?.status === "paid" ? 0 : venueAmountDue,
       reconciliationNote: refundAmount > 0 && reversedAmount === 0
         ? "Refund recorded; transfer reversal requires review"
         : null

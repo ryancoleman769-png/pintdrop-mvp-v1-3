@@ -3046,7 +3046,11 @@ function computeTraceabilitySummary(rows) {
 function computeSettlementSummary(rows) {
   return rows.reduce((summary, row) => {
     summary.refunds += Number(row.refundAmount || 0);
-    if (row.payoutStatus === "paid") summary.paidOut += Number(row.transferAmount || row.venueValue || 0);
+    if (row.payoutStatus === "paid") {
+      const venueValue = Number(row.venueValue || 0);
+      const transferAmount = Number(row.transferAmount || venueValue);
+      summary.paidOut += Math.min(venueValue, transferAmount);
+    }
     summary.outstanding += Number(row.outstandingAmount || 0);
     return summary;
   }, { refunds: 0, paidOut: 0, outstanding: 0 });
