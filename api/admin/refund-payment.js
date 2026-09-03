@@ -77,6 +77,17 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    if (
+      String(process.env.VERCEL_ENV || "").trim() === "preview"
+      && (!checkoutSessionId || !checkoutSessionId.startsWith("cs_test_"))
+    ) {
+      sendJson(res, 403, {
+        ok: false,
+        error: "Preview can only refund Stripe test-mode payments."
+      });
+      return;
+    }
+
     const stripe = stripeResult.stripe;
     const resolved = await resolvePaymentIntent(
       stripe,
@@ -145,4 +156,3 @@ module.exports = async function handler(req, res) {
     });
   }
 };
-
