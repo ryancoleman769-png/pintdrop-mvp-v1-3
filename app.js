@@ -221,10 +221,12 @@ async function loadGiftsForPub(pub) {
 }
 
 function ensureSelectedGiftValid() {
-  if (!gifts.length) return;
-  if (!selectedGift || !gifts.some(gift => gift.id === selectedGift.id)) {
-    selectedGift = gifts.find(gift => gift.id === "pint") || gifts[0];
+  if (!gifts.length) {
+    selectedGift = null;
+    return;
   }
+  const previousId = selectedGift?.id;
+  selectedGift = (previousId && gifts.find(gift => gift.id === previousId)) || gifts[0];
 }
 
 const SERVICE_FEE_RATE = 0.15;
