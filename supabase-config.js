@@ -43,11 +43,11 @@ window.PintDropSupabase = {
   getClient: getSupabaseClient
 };
 
-const BAR_TAB_PRESET_PRICES = [20, 30];
+const BAR_TAB_PRESET_PRICES = [20, 30, 50];
 window.PintDropSupabase.BAR_TAB_PRESET_PRICES = BAR_TAB_PRESET_PRICES;
 
 function barTabPresetFromSlug(slug) {
-  const match = /^tab-(20|30)$/.exec(String(slug || "").trim().toLowerCase());
+  const match = /^tab-(20|30|50)$/.exec(String(slug || "").trim().toLowerCase());
   return match ? Number(match[1]) : null;
 }
 

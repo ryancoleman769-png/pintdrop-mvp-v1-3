@@ -97,10 +97,10 @@ const DEMO_GIFTS = [
   { id: "spirit", name: "Spirit & Mixer", price: 9.00, icon: "🥃" }
 ];
 
-const BAR_TAB_PRESETS = window.PintDropSupabase?.BAR_TAB_PRESET_PRICES || [20, 30];
+const BAR_TAB_PRESETS = window.PintDropSupabase?.BAR_TAB_PRESET_PRICES || [20, 30, 50];
 
 function barTabPresetFromSlug(slug) {
-  const match = /^tab-(20|30)$/.exec(String(slug || "").trim().toLowerCase());
+  const match = /^tab-(20|30|50)$/.exec(String(slug || "").trim().toLowerCase());
   return match ? Number(match[1]) : null;
 }
 
@@ -3979,7 +3979,7 @@ function normalizePartnerMenuError(error) {
   if (lower.includes("price is required")) return "Enter a price for each available drink.";
   if (lower.includes("at least one standard drink")) return "Make at least one standard drink available.";
   if (lower.includes("enable bar tab")) return "Turn on Offer Bar Tab before configuring it.";
-  if (lower.includes("choose at least one bar tab amount")) return "Choose at least one Bar Tab amount (€20 or €30).";
+  if (lower.includes("choose at least one bar tab amount")) return "Choose at least one Bar Tab amount (€20, €30 or €50).";
   if (lower.includes("too many menu items")) return "Too many menu items.";
   if (lower.includes("at least one drink is required")) return "Add at least one drink.";
 
@@ -4050,7 +4050,7 @@ function updatePartnerBarTabLegacyNotice() {
     return;
   }
 
-  notice.textContent = "Your saved Bar Tab amount isn’t €20 or €30. Choose one or both of those amounts to keep offering Bar Tab. The old amount is left unchanged until you save.";
+  notice.textContent = "Your saved Bar Tab amount isn’t €20, €30 or €50. Choose one or both of those amounts to keep offering Bar Tab. The old amount is left unchanged until you save.";
   notice.classList.remove("hidden");
 }
 
@@ -4170,7 +4170,7 @@ function validatePartnerMenuPayload(payload) {
       item.active && BAR_TAB_PRESETS.includes(barTabPresetFromSlug(item.slug))
     ));
     if (!selectedPresets.length) {
-      return "Choose at least one Bar Tab amount (€20 or €30).";
+      return "Choose at least one Bar Tab amount (€20, €30 or €50).";
     }
   }
 
