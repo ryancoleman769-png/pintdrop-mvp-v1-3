@@ -12,15 +12,12 @@ const appJs = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const indexHtml = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const stylesCss = fs.readFileSync(path.join(root, "styles.css"), "utf8");
 
-assert.match(
-  appJs,
-  /const CUSTOMER_VISIBLE_PUB_IDS = new Set\(\["oflahertys", "local"\]\);/,
-  "Customer visibility allowlist is unchanged"
-);
 assert.ok(
-  !/CUSTOMER_VISIBLE_PUB_IDS = new Set\([^)]*drift/.test(appJs),
-  "Drift Inn is not in the customer visibility allowlist"
+  !appJs.includes("CUSTOMER_VISIBLE_PUB_IDS"),
+  "Customer visibility is not restricted by a hard-coded pub allowlist"
 );
+assert.match(appJs, /function isCustomerVisiblePub\(/);
+assert.match(appJs, /if \(pub\.source === "supabase"\) return pub\.participating !== false;/);
 assert.match(
   indexHtml,
   /placeholder="Search pubs or towns"/,
@@ -41,11 +38,34 @@ assert.match(indexHtml, /How PintDrop works/);
 assert.match(indexHtml, /Buy them a pint from anywhere in the world/);
 assert.match(stylesCss, /#customer \.how-pintdrop-works-steps/);
 
-const start = appJs.indexOf("const OTHER_TOWN_HEADING");
+const start = appJs.indexOf("function isPintDropTestPub");
 const end = appJs.indexOf("async function loadPubs");
 assert.ok(start > 0 && end > start, "Town grouping helpers are present");
 const sandbox = {};
-vm.runInNewContext(`${appJs.slice(start, end)}\nthis.pubTownHeading = pubTownHeading;\nthis.groupPubsByTown = groupPubsByTown;\nthis.partitionPickerPubs = partitionPickerPubs;\nthis.isComingSoonPickerPub = isComingSoonPickerPub;\nthis.OTHER_TOWN_HEADING = OTHER_TOWN_HEADING;`, sandbox);
+vm.runInNewContext(`
+function sortPubs(list) { return [...list]; }
+${appJs.slice(start, end)}
+this.pubTownHeading = pubTownHeading;
+this.groupPubsByTown = groupPubsByTown;
+this.partitionPickerPubs = partitionPickerPubs;
+this.isComingSoonPickerPub = isComingSoonPickerPub;
+this.isCustomerVisiblePub = isCustomerVisiblePub;
+this.applyCustomerPubFilter = applyCustomerPubFilter;
+this.OTHER_TOWN_HEADING = OTHER_TOWN_HEADING;
+`, sandbox);
+
+const customerVisible = sandbox.applyCustomerPubFilter([
+  { id: "oflahertys", name: "O'Flaherty's Bar", source: "supabase", participating: true },
+  { id: "thecottagebar", name: "The Cottage Bar", town: "Letterkenny", source: "supabase", participating: true },
+  { id: "pintdroptestpub", name: "PintDrop Test Pub", source: "supabase", participating: true },
+  { id: "inactivepub", name: "Inactive Pub", source: "supabase", participating: false },
+  { id: "drift", name: "The Drift Inn", source: "demo", participating: true },
+  { id: "local", name: "Your Local", source: "demo", participating: false }
+]);
+assert.ok(customerVisible.some(pub => pub.id === "thecottagebar"), "Approved Supabase pubs such as The Cottage remain visible");
+assert.ok(!customerVisible.some(pub => pub.id === "pintdroptestpub"), "PintDrop test pubs remain hidden");
+assert.ok(!customerVisible.some(pub => pub.id === "inactivepub"), "Inactive Supabase pubs remain hidden");
+assert.ok(!customerVisible.some(pub => pub.id === "drift"), "Participating demo pubs are not exposed as live venues");
 
 assert.strictEqual(sandbox.pubTownHeading({ town: "Buncrana" }), "Buncrana");
 assert.strictEqual(sandbox.pubTownHeading({ town: "  " }), "Other");

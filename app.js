@@ -4,8 +4,6 @@ const DEMO_PUBS = [
   { id: "local", name: "Your Local", town: "Coming soon", icon: "📍", participating: false }
 ];
 
-const CUSTOMER_VISIBLE_PUB_IDS = new Set(["oflahertys", "local"]);
-
 let pubs = DEMO_PUBS.map(pub => ({ ...pub }));
 
 function sortPubs(list) {
@@ -19,8 +17,33 @@ function sortPubs(list) {
   });
 }
 
+function isPintDropTestPub(pub) {
+  const name = String(pub?.name || "").toLowerCase();
+  const id = String(pub?.id || "").toLowerCase();
+  const slug = String(pub?.slug || "").toLowerCase();
+  return /pintdrop\s*test/.test(name)
+    || id.includes("pintdroptest")
+    || slug.includes("pintdroptest");
+}
+
+function isCustomerVisiblePub(pub) {
+  if (!pub?.id || isPintDropTestPub(pub)) return false;
+  if (pub.source === "supabase") return pub.participating !== false;
+  return pub.id === "local" || pub.id === "oflahertys";
+}
+
 function applyCustomerPubFilter(list) {
-  return sortPubs(list.filter(pub => CUSTOMER_VISIBLE_PUB_IDS.has(pub.id)));
+  const visible = (list || []).filter(isCustomerVisiblePub);
+  const byId = new Map();
+
+  for (const pub of visible) {
+    const existing = byId.get(pub.id);
+    if (!existing || (pub.source === "supabase" && existing.source !== "supabase")) {
+      byId.set(pub.id, pub);
+    }
+  }
+
+  return sortPubs([...byId.values()]);
 }
 
 const OTHER_TOWN_HEADING = "Other";
