@@ -67,7 +67,7 @@ const PUB_LOCAL_ASSETS = {
   local: { icon: "📍" }
 };
 
-const COTTAGE_BAR_LETTERKENNY_IMAGE = "images/cottage-bar-letterkenny.png";
+const COTTAGE_BAR_LETTERKENNY_IMAGE = "images/cottage bar letterkenny jpeg.jpeg";
 
 function isCottageBarLetterkenny(row) {
   const name = String(row?.name || "").trim().toLowerCase();
