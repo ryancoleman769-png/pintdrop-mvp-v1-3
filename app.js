@@ -1274,20 +1274,12 @@ function validateOrderForm() {
   return true;
 }
 
-const venueMeta = {
-  oflahertys: { rating: "4.9", open: true },
-  drift: { rating: "4.7", open: true },
-  local: { rating: "—", open: false }
-};
-
 function renderVenueCard(pub) {
-  const meta = venueMeta[pub.id] || { rating: "4.8", open: pub.participating !== false };
   const disabled = !isParticipatingPub(pub);
   return `
     <button type="button" class="venue-card venue-card--${pub.id} ${pub.id === selectedPub.id ? "selected" : ""} ${disabled ? "is-disabled" : ""}" data-pub="${pub.id}" ${disabled ? "disabled aria-disabled=\"true\"" : ""}>
       <div class="venue-banner">
         ${pub.image ? `<img class="venue-banner-photo" src="${pub.image}" alt="${pub.name}, ${pub.town}" loading="lazy" />` : `<span class="venue-banner-icon">${pub.icon}</span>`}
-        <span class="venue-open-badge ${meta.open ? "is-open" : "is-soon"}">${disabled ? "Coming soon" : "Open now"}</span>
       </div>
       <div class="venue-card-content">
         <div class="venue-card-top">
