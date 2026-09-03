@@ -111,7 +111,7 @@
 
   function renderRows(rows) {
     if (!rows.length) {
-      tableBody.innerHTML = `<tr><td colspan="10">No transactions for these filters.</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="11">No transactions for these filters.</td></tr>`;
       return;
     }
     tableBody.innerHTML = rows.map((row) => `
@@ -126,6 +126,11 @@
         <td><span class="admin-status admin-status--${row.status.toLowerCase()}">${escapeHtml(row.status)}</span></td>
         <td>${escapeHtml(row.redeemedAtLabel || "—")}</td>
         <td class="admin-session-id">${escapeHtml(row.stripeCheckoutSessionId || "—")}</td>
+        <td>
+          ${row.stripeCheckoutSessionId
+            ? `<button type="button" class="ghost admin-refund-btn" data-session-id="${escapeHtml(row.stripeCheckoutSessionId)}" data-voucher-code="${escapeHtml(row.code)}">Refund</button>`
+            : "—"}
+        </td>
       </tr>
     `).join("");
   }
@@ -204,6 +209,44 @@
     window.location.href = `/api/admin/transactions.csv${filterQuery()}`;
   });
 
+  tableBody.addEventListener("click", async (event) => {
+    const button = event.target.closest(".admin-refund-btn");
+    if (!button) return;
+
+    const checkoutSessionId = button.dataset.sessionId || "";
+    const voucherCode = button.dataset.voucherCode || "this voucher";
+    const confirmation = window.prompt(
+      `Refund ${voucherCode}? This returns the customer payment and reverses the venue transfer and PintDrop fee. Type REFUND to continue.`
+    );
+    if (String(confirmation || "").trim().toUpperCase() !== "REFUND") return;
+
+    button.disabled = true;
+    button.textContent = "Refunding…";
+    setText(statusMessage, "Processing the refund…", false);
+
+    const { response, data } = await adminFetch("/api/admin/refund-payment", {
+      method: "POST",
+      body: JSON.stringify({ checkoutSessionId, confirmation: "REFUND" })
+    });
+
+    if (!response.ok || !data.ok) {
+      button.disabled = false;
+      button.textContent = "Refund";
+      setText(loadError, data.error || "Could not refund this payment.", true);
+      setText(statusMessage, "");
+      return;
+    }
+
+    button.textContent = data.alreadyRefunded ? "Already refunded" : "Refunded";
+    setText(loadError, "");
+    setText(
+      statusMessage,
+      data.alreadyRefunded
+        ? `${voucherCode} had already been fully refunded.`
+        : `${voucherCode} was refunded; the venue transfer and PintDrop fee were reversed.`,
+      false
+    );
+  });
+
   void checkSession();
 })();
-
