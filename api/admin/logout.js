@@ -1,15 +1,22 @@
+const {
+  handleOptions,
+  requirePost,
+  sendJson,
+  hasValidAdminAuth
+} = require("../_lib/connect-helpers");
 const { clearAdminSessionCookie } = require("../_lib/admin-session");
-const { requirePreviewOrDevelopment } = require("../_lib/preview-only");
+const { requireAdminReportingEnv } = require("../_lib/admin-guard");
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Cache-Control", "no-store");
-  if (!requirePreviewOrDevelopment(res)) return;
+  if (handleOptions(req, res)) return;
+  if (!requireAdminReportingEnv(req, res)) return;
+  if (!requirePost(req, res)) return;
 
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
+  if (!hasValidAdminAuth(req)) {
+    sendJson(res, 401, { ok: false, error: "Unauthorized." });
     return;
   }
 
   clearAdminSessionCookie(res, req);
-  res.status(200).json({ ok: true });
+  sendJson(res, 200, { ok: true, authenticated: false });
 };

@@ -4,8 +4,6 @@ const DEMO_PUBS = [
   { id: "local", name: "Your Local", town: "Coming soon", icon: "📍", participating: false }
 ];
 
-const CUSTOMER_VISIBLE_PUB_IDS = new Set(["oflahertys", "local"]);
-
 let pubs = DEMO_PUBS.map(pub => ({ ...pub }));
 
 function sortPubs(list) {
@@ -19,8 +17,33 @@ function sortPubs(list) {
   });
 }
 
+function isPintDropTestPub(pub) {
+  const name = String(pub?.name || "").toLowerCase();
+  const id = String(pub?.id || "").toLowerCase();
+  const slug = String(pub?.slug || "").toLowerCase();
+  return /pintdrop\s*test/.test(name)
+    || id.includes("pintdroptest")
+    || slug.includes("pintdroptest");
+}
+
+function isCustomerVisiblePub(pub) {
+  if (!pub?.id) return false;
+  if (isPintDropTestPub(pub)) return false;
+  if (pub.source === "supabase") return true;
+  if (pub.id === "local" || pub.id === "oflahertys") return true;
+  return false;
+}
+
 function applyCustomerPubFilter(list) {
-  return sortPubs(list.filter(pub => CUSTOMER_VISIBLE_PUB_IDS.has(pub.id)));
+  const visible = (list || []).filter(isCustomerVisiblePub);
+  const byId = new Map();
+  for (const pub of visible) {
+    const existing = byId.get(pub.id);
+    if (!existing || (pub.source === "supabase" && existing.source !== "supabase")) {
+      byId.set(pub.id, pub);
+    }
+  }
+  return sortPubs([...byId.values()]);
 }
 
 const OTHER_TOWN_HEADING = "Other";
@@ -198,10 +221,12 @@ async function loadGiftsForPub(pub) {
 }
 
 function ensureSelectedGiftValid() {
-  if (!gifts.length) return;
-  if (!selectedGift || !gifts.some(gift => gift.id === selectedGift.id)) {
-    selectedGift = gifts.find(gift => gift.id === "pint") || gifts[0];
+  if (!gifts.length) {
+    selectedGift = null;
+    return;
   }
+  const previousId = selectedGift?.id;
+  selectedGift = (previousId && gifts.find(gift => gift.id === previousId)) || gifts[0];
 }
 
 const SERVICE_FEE_RATE = 0.15;

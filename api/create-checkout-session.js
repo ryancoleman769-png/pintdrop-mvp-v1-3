@@ -1,6 +1,6 @@
-const { calculateServiceFee, calculateOrderTotal } = require("./_lib/pricing");
 const { createStripeClient, supabaseRpc } = require("./_lib/connect-helpers");
 const { buildCheckoutMetadata } = require("./_lib/fulfillment");
+const { loadVerifiedCheckoutQuote } = require("./_lib/checkout-drink");
 
 function getRequestOrigin(req) {
   const proto = req.headers["x-forwarded-proto"] || "https";
@@ -95,9 +95,6 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = await readJsonBody(req);
-    const parsedGiftPrice = Number(body.giftPrice);
-    const parsedFee = Number(body.fee);
-    const parsedTotal = Number(body.total);
     const pubId = Number(body.pubId);
     const drinkId = Number(body.drinkId);
     const giftName = String(body.giftName || "PintDrop gift").trim();
@@ -111,24 +108,6 @@ module.exports = async function handler(req, res) {
     const recipientEmail = String(body.recipientEmail || "").trim().toLowerCase();
     const message = String(body.message || "").trim();
     const deliveryDate = String(body.deliveryDate || new Date().toISOString().slice(0, 10)).trim();
-
-    if (!Number.isFinite(parsedGiftPrice) || parsedGiftPrice <= 0) {
-      res.status(400).json({ ok: false, error: "Invalid gift price." });
-      return;
-    }
-
-    const expectedFee = calculateServiceFee(parsedGiftPrice);
-    const expectedTotal = calculateOrderTotal(parsedGiftPrice);
-
-    if (!Number.isFinite(parsedFee) || Math.abs(parsedFee - expectedFee) > 0.001) {
-      res.status(400).json({ ok: false, error: "Invalid order pricing." });
-      return;
-    }
-
-    if (!Number.isFinite(parsedTotal) || Math.abs(parsedTotal - expectedTotal) > 0.001) {
-      res.status(400).json({ ok: false, error: "Order total mismatch." });
-      return;
-    }
 
     if (!Number.isFinite(pubId) || pubId <= 0) {
       res.status(400).json({ ok: false, error: "pubId is required." });
@@ -145,8 +124,20 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const amountCents = Math.round(parsedTotal * 100);
-    const feeCents = Math.round(parsedFee * 100);
+    const verified = await loadVerifiedCheckoutQuote(pubId, drinkId);
+    if (!verified.ok) {
+      res.status(verified.statusCode || 400).json({ ok: false, error: verified.error });
+      return;
+    }
+
+    const giftPrice = verified.giftPrice;
+    const serviceFee = verified.serviceFee;
+    const total = verified.total;
+    const resolvedGiftName = verified.drinkName || giftName || "PintDrop gift";
+    const resolvedDrinkIcon = verified.drinkIcon || drinkIcon || "🍺";
+
+    const amountCents = Math.round(total * 100);
+    const feeCents = Math.round(serviceFee * 100);
     const origin = getRequestOrigin(req);
     const stripe = stripeResult.stripe;
 
@@ -179,7 +170,7 @@ module.exports = async function handler(req, res) {
           price_data: {
             currency: "eur",
             product_data: {
-              name: giftName,
+              name: resolvedGiftName,
               description
             },
             unit_amount: amountCents
@@ -195,11 +186,11 @@ module.exports = async function handler(req, res) {
           drinkId,
           pubName,
           pubLocation,
-          drinkName: giftName,
-          drinkIcon,
-          giftPrice: parsedGiftPrice,
-          serviceFee: parsedFee,
-          total: parsedTotal,
+          drinkName: resolvedGiftName,
+          drinkIcon: resolvedDrinkIcon,
+          giftPrice,
+          serviceFee,
+          total,
           recipientName,
           recipientPhone,
           recipientEmail,

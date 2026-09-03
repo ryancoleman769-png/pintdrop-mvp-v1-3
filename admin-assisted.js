@@ -127,7 +127,10 @@
     try {
       await request("/api/admin/login", {
         method: "POST",
-        body: JSON.stringify({ key: byId("adminPassword").value })
+        body: JSON.stringify({
+          key: byId("adminPassword").value,
+          password: byId("adminPassword").value
+        })
       });
       byId("adminPassword").value = "";
       await showWorkspace();

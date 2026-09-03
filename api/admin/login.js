@@ -1,46 +1,41 @@
-const crypto = require("crypto");
+const {
+  handleOptions,
+  requirePost,
+  sendJson,
+  readJsonBody
+} = require("../_lib/connect-helpers");
 const {
   getAdminSessionSecret,
   createAdminSessionToken,
   setAdminSessionCookie
 } = require("../_lib/admin-session");
-const { readJsonBody } = require("../_lib/connect-helpers");
-const { requirePreviewOrDevelopment } = require("../_lib/preview-only");
-
-function safeEqual(left, right) {
-  const leftBuffer = Buffer.from(String(left || ""));
-  const rightBuffer = Buffer.from(String(right || ""));
-  return leftBuffer.length === rightBuffer.length
-    && crypto.timingSafeEqual(leftBuffer, rightBuffer);
-}
+const { requireAdminReportingEnv, passwordsMatch } = require("../_lib/admin-guard");
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Cache-Control", "no-store");
-  if (!requirePreviewOrDevelopment(res)) return;
-
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
+  if (handleOptions(req, res)) return;
+  if (!requireAdminReportingEnv(req, res)) return;
+  if (!requirePost(req, res)) return;
 
   const secret = getAdminSessionSecret();
   if (!secret) {
-    res.status(500).json({ ok: false, error: "Preview admin access is not configured." });
+    sendJson(res, 500, { ok: false, error: "Admin login is not configured on the server." });
     return;
   }
 
+  let body = {};
   try {
-    const body = await readJsonBody(req);
-    if (!safeEqual(body?.key, secret)) {
-      res.setHeader("Retry-After", "2");
-      res.status(401).json({ ok: false, error: "Incorrect admin password." });
-      return;
-    }
-
-    const token = createAdminSessionToken(secret);
-    setAdminSessionCookie(res, token, req);
-    res.status(200).json({ ok: true });
+    body = await readJsonBody(req);
   } catch {
-    res.status(400).json({ ok: false, error: "Invalid request." });
+    sendJson(res, 400, { ok: false, error: "Invalid JSON body." });
+    return;
   }
+
+  const password = String(body.password || "").trim();
+  if (!password || !passwordsMatch(password, secret)) {
+    sendJson(res, 401, { ok: false, error: "Invalid admin credentials." });
+    return;
+  }
+
+  setAdminSessionCookie(res, createAdminSessionToken(secret), req);
+  sendJson(res, 200, { ok: true, authenticated: true });
 };

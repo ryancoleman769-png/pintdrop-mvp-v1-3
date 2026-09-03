@@ -67,6 +67,19 @@ const PUB_LOCAL_ASSETS = {
   local: { icon: "📍" }
 };
 
+const COTTAGE_BAR_LETTERKENNY_IMAGE = "images/cottage-bar-letterkenny.png";
+
+function isCottageBarLetterkenny(row) {
+  const name = String(row?.name || "").trim().toLowerCase();
+  const town = String(row?.town || row?.city || row?.location || "").trim().toLowerCase();
+  return name === "the cottage bar" && town === "letterkenny";
+}
+
+function resolveCustomerPubImage(row, assets) {
+  if (isCottageBarLetterkenny(row)) return COTTAGE_BAR_LETTERKENNY_IMAGE;
+  return row?.image_url || row?.image || assets?.image || null;
+}
+
 const PUB_SLUG_BY_SUPABASE_ID = {
   1: "oflahertys",
   8: "oflahertys"
@@ -98,7 +111,7 @@ function mapSupabasePubRow(row) {
     name: row.name,
     town: row.town || row.city || row.location || "",
     icon: row.icon || assets.icon || "🍺",
-    image: row.image_url || row.image || assets.image || null,
+    image: resolveCustomerPubImage(row, assets),
     participating: customerReady,
     offersBarTab: row.offers_bar_tab,
     source: "supabase"

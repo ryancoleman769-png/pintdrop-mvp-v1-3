@@ -1,14 +1,17 @@
-const { hasValidAdminSession } = require("../_lib/admin-session");
-const { requirePreviewOrDevelopment } = require("../_lib/preview-only");
+const {
+  handleOptions,
+  sendJson,
+  hasValidAdminAuth
+} = require("../_lib/connect-helpers");
+const { requireAdminReportingEnv, requireGet } = require("../_lib/admin-guard");
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Cache-Control", "no-store");
-  if (!requirePreviewOrDevelopment(res)) return;
+  if (handleOptions(req, res)) return;
+  if (!requireAdminReportingEnv(req, res)) return;
+  if (!requireGet(req, res)) return;
 
-  if (req.method !== "GET") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
-
-  res.status(200).json({ ok: true, authenticated: hasValidAdminSession(req) });
+  sendJson(res, 200, {
+    ok: true,
+    authenticated: hasValidAdminAuth(req)
+  });
 };

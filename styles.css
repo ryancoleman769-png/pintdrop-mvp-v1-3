@@ -4252,3 +4252,110 @@ body.partner-login-active main {
     font-size: 1rem;
   }
 }
+
+.admin-page .admin-main {
+  width: min(1180px, calc(100% - 32px));
+  margin: 24px auto 64px;
+}
+.admin-page .admin-card h1,
+.admin-page .admin-section-head h1 {
+  margin: 8px 0 8px;
+}
+.admin-page .section-lead {
+  color: var(--muted);
+  margin: 0 0 18px;
+}
+.admin-page .admin-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.admin-page .admin-login-form,
+.admin-page .admin-filters {
+  display: grid;
+  gap: 14px;
+}
+.admin-page .admin-filters {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: end;
+}
+.admin-page .field span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.admin-page input,
+.admin-page select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  font: inherit;
+}
+.admin-page .ghost {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.admin-page .full { width: 100%; }
+.admin-page .admin-error {
+  color: #ffb4b4;
+  margin: 0;
+}
+.admin-page .admin-note {
+  color: var(--muted);
+}
+.admin-page .admin-overall {
+  margin-bottom: 16px;
+  font-size: 1.05rem;
+}
+.admin-page .admin-totals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+.admin-page .admin-totals-list p,
+.admin-page .admin-overall p {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+.admin-page .admin-table-wrap {
+  overflow-x: auto;
+}
+.admin-page .admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.admin-page .admin-table th,
+.admin-page .admin-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.admin-page .admin-table th {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-page .admin-session-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+.admin-page .admin-status--valid { color: var(--green); font-weight: 800; }
+.admin-page .admin-status--redeemed { color: #f3c36b; font-weight: 800; }

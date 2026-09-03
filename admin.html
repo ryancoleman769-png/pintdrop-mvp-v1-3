@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex,nofollow" />
+  <meta name="theme-color" content="#07120d" />
+  <title>PintDrop Admin — Transactions</title>
+  <link rel="stylesheet" href="styles.css?v=20260902-admin-tx" />
+</head>
+<body class="admin-page">
+  <header class="topbar admin-topbar">
+    <div class="brand">
+      <div class="pintdrop-logo">
+        <img class="pintdrop-mark pintdrop-mark--sm" src="images/pintdrop-mark.png" alt="" />
+        <div class="pintdrop-logo-text">
+          <strong>Pint<span>Drop</span></strong>
+          <small>PintDrop Admin</small>
+        </div>
+      </div>
+    </div>
+    <button type="button" id="adminLogoutBtn" class="ghost hidden">Sign out</button>
+  </header>
+
+  <main class="admin-main">
+    <section id="adminLoginPanel" class="card admin-card">
+      <p class="eyebrow">Internal</p>
+      <h1>PintDrop Admin</h1>
+      <p class="section-lead">Sign in to view purchases across all pubs.</p>
+      <form id="adminLoginForm" class="admin-login-form">
+        <label class="field">
+          <span>Admin password</span>
+          <input type="password" id="adminPassword" autocomplete="current-password" required />
+        </label>
+        <p id="adminLoginError" class="admin-error hidden" role="alert"></p>
+        <button type="submit" class="primary full">Sign in</button>
+      </form>
+    </section>
+
+    <section id="adminDashboard" class="hidden">
+      <div class="admin-section-head">
+        <div>
+          <p class="eyebrow">Reporting</p>
+          <h1>Transactions</h1>
+          <p class="section-lead">Purchases from every pub, without partner login. Times are Europe/Dublin.</p>
+        </div>
+        <button type="button" id="adminExportCsvBtn" class="primary">Export CSV</button>
+      </div>
+
+      <form id="adminFilterForm" class="card admin-card admin-filters">
+        <label class="field">
+          <span>Pub</span>
+          <select id="adminFilterPub">
+            <option value="">All pubs</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>From</span>
+          <input type="date" id="adminFilterFrom" />
+        </label>
+        <label class="field">
+          <span>To</span>
+          <input type="date" id="adminFilterTo" />
+        </label>
+        <label class="field">
+          <span>Status</span>
+          <select id="adminFilterStatus">
+            <option value="all">All</option>
+            <option value="VALID">VALID</option>
+            <option value="REDEEMED">REDEEMED</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Stripe</span>
+          <select id="adminFilterStripe">
+            <option value="all">Test + live</option>
+            <option value="test">Test only</option>
+            <option value="live">Live only</option>
+          </select>
+        </label>
+        <button type="submit" class="primary admin-filter-submit">Apply filters</button>
+      </form>
+
+      <p id="adminLoadError" class="admin-error hidden" role="alert"></p>
+      <p id="adminStatusMessage" class="admin-note hidden" role="status"></p>
+
+      <section class="card admin-card">
+        <h2>Totals</h2>
+        <div id="adminOverallTotals" class="admin-overall"></div>
+        <div class="admin-totals-grid">
+          <div>
+            <h3>Daily</h3>
+            <div id="adminDailyTotals" class="admin-totals-list"></div>
+          </div>
+          <div>
+            <h3>Weekly</h3>
+            <div id="adminWeeklyTotals" class="admin-totals-list"></div>
+          </div>
+          <div>
+            <h3>Per pub</h3>
+            <div id="adminPubTotals" class="admin-totals-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card admin-card admin-table-card">
+        <h2>Purchases</h2>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Date/time</th>
+                <th>Pub</th>
+                <th>Voucher</th>
+                <th>Drink</th>
+                <th>Drink value</th>
+                <th>Fee</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th>Redeemed</th>
+                <th>Stripe session</th>
+              </tr>
+            </thead>
+            <tbody id="adminTransactionsBody">
+              <tr><td colspan="10">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="admin.js?v=20260902-admin-tx"></script>
+</body>
+</html>
+
