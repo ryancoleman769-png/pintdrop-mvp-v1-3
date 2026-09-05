@@ -6,8 +6,23 @@ const DEMO_PUBS = [
 
 let pubs = DEMO_PUBS.map(pub => ({ ...pub }));
 
+const PRIVATE_DEMO_PUB_PARAM = "demo_pub";
+
+function requestedPrivateDemoPubId() {
+  const value = new URLSearchParams(location.search).get(PRIVATE_DEMO_PUB_PARAM);
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function isRequestedPrivateDemoPub(pub) {
+  const requestedId = requestedPrivateDemoPubId();
+  return requestedId !== null && Number(pub?.supabaseId) === requestedId;
+}
+
 function sortPubs(list) {
   return [...list].sort((a, b) => {
+    if (isRequestedPrivateDemoPub(a)) return -1;
+    if (isRequestedPrivateDemoPub(b)) return 1;
     if (a.id === PARTNER_PUB_ID) return -1;
     if (b.id === PARTNER_PUB_ID) return 1;
     if (Boolean(a.participating) !== Boolean(b.participating)) {
@@ -27,7 +42,8 @@ function isPintDropTestPub(pub) {
 }
 
 function isCustomerVisiblePub(pub) {
-  if (!pub?.id || isPintDropTestPub(pub)) return false;
+  if (!pub?.id) return false;
+  if (isPintDropTestPub(pub)) return isRequestedPrivateDemoPub(pub);
   if (pub.source === "supabase") return pub.participating !== false;
   return pub.id === "local" || pub.id === "oflahertys";
 }
@@ -989,7 +1005,9 @@ function formatDate(value) {
 }
 
 async function applyDemoDefaults() {
-  selectedPub = pubs.find(pub => pub.participating) || pubs[0];
+  selectedPub = pubs.find(isRequestedPrivateDemoPub)
+    || pubs.find(pub => pub.participating)
+    || pubs[0];
   await loadGiftsForPub(selectedPub);
   selectedGift = gifts[0];
   customerSubStep = "pub";
